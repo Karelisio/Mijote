@@ -13,7 +13,7 @@ export interface WasmOptions {
 
 let modulePromise: Promise<Sqlite3> | null = null;
 function loadModule(): Promise<Sqlite3> {
-  modulePromise ??= sqlite3InitModule({ print: () => undefined, printErr: () => undefined } as never);
+  modulePromise ??= sqlite3InitModule();
   return modulePromise;
 }
 
