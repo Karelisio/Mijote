@@ -55,7 +55,6 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.2",
     "@capacitor/splash-screen": "^8.0.2",
-    "@capacitor/status-bar": "^8.0.3",
     "@material/material-color-utilities": "^0.4.0",
     "@sqlite.org/sqlite-wasm": "^3.53.4-build1",
     "framer-motion": "^12.43.0",

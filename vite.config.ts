@@ -1,6 +1,11 @@
-import { defineConfig, type Plugin } from 'vite';
+import type { Plugin } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+const appVersion = (process.env.APP_VERSION ?? pkg.version).replace(/^v/, '');
 
 /**
  * Dev-only proxy so URL import can be tested in a desktop browser
@@ -35,6 +40,7 @@ function devFetchProxy(): Plugin {
 
 export default defineConfig({
   plugins: [react(), devFetchProxy()],
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
