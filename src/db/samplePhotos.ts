@@ -86,8 +86,12 @@ async function rasterize(svg: string): Promise<Blob> {
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const img = new Image();
-    img.src = url;
-    await img.decode();
+    // onload is more reliable than decode() for SVG blobs in Android WebViews.
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('svg load failed'));
+      img.src = url;
+    });
     const canvas = document.createElement('canvas');
     canvas.width = 1200;
     canvas.height = 900;
@@ -104,13 +108,14 @@ async function rasterize(svg: string): Promise<Blob> {
 
 /** Renders and stores the sample photos; failures just leave a recipe without photo. */
 export async function createSamplePhotos(): Promise<(string | null)[]> {
-  return Promise.all(
-    SVGS.map(async (svg) => {
-      try {
-        return await saveImage(await rasterize(svg), false);
-      } catch {
-        return null;
-      }
-    }),
-  );
+  // Sequential: concurrent writes race on creating the images/ directory.
+  const out: (string | null)[] = [];
+  for (const svg of SVGS) {
+    try {
+      out.push(await saveImage(await rasterize(svg), false));
+    } catch {
+      out.push(null);
+    }
+  }
+  return out;
 }
