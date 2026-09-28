@@ -1,5 +1,6 @@
 import type { Category, Difficulty, ImportedRecipe, IngredientData, Recipe } from '@/db/types';
 import { parseIngredientLine } from '@/import/ingredientParser';
+import { guessCategoryFromTitle } from '@/import/category';
 import { newId } from '@/lib/id';
 import type { Lang } from '@/i18n';
 import { formatIngredientLine } from './format';
@@ -82,7 +83,7 @@ export function stateFromImported(r: ImportedRecipe): EditState {
     prep: r.prepMinutes === null ? '' : String(r.prepMinutes),
     cook: r.cookMinutes === null ? '' : String(r.cookMinutes),
     difficulty: null,
-    category: r.category ?? 'main',
+    category: r.category ?? guessCategoryFromTitle(r.title) ?? 'main',
     tags: r.tags.join(', '),
     sourceUrl: r.sourceUrl ?? '',
     notes: r.notes,

@@ -4,7 +4,9 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 import { readFileSync } from 'node:fs';
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
 const appVersion = (process.env.APP_VERSION ?? pkg.version).replace(/^v/, '');
 
 /**

@@ -23,3 +23,25 @@ export function mapCategory(text: string): Category | null {
   }
   return null;
 }
+
+/** Dish keywords found in titles → category, used when a source gives no category. */
+const TITLE_KEYWORDS: [RegExp, Category][] = [
+  [
+    /\b(gateau|cake|tarte (aux|au) (pommes|fraises|citron|poires|chocolat)|tiramisu|mousse au chocolat|cookies?|brownies?|muffins?|clafoutis|fondant|creme brulee|panna cotta|flan|crumble|madeleines?|macarons?|cheesecake|sorbet|glace|biscuits?|financiers?|compote)\b/,
+    'dessert',
+  ],
+  [/\b(crepes?|pancakes?|gaufres?|porridge|granola|smoothie bowl)\b/, 'dessert'],
+  [/\b(soupe|veloute|salade|gaspacho|terrine|tartare|carpaccio|soup|salad)\b/, 'starter'],
+  [/\b(pain|brioche|baguette|focaccia|croissants?|bread|buns?)\b/, 'bread'],
+  [/\b(sauce|vinaigrette|mayonnaise|pesto|coulis|dressing)\b/, 'sauce'],
+  [/\b(cocktail|limonade|smoothie|jus|sirop|lemonade|juice)\b/, 'drink'],
+  [/\b(houmous|hummus|tapenade|guacamole|rillettes|toasts?|verrines?|dip)\b/, 'snack'],
+  [/\b(puree|gratin dauphinois|ratatouille|riz pilaf|frites|legumes rotis|mashed|fries)\b/, 'side'],
+];
+
+/** Guesses a category from the recipe title (FR/EN), or null. */
+export function guessCategoryFromTitle(title: string): Category | null {
+  const n = normalizeText(title);
+  for (const [re, category] of TITLE_KEYWORDS) if (re.test(n)) return category;
+  return null;
+}

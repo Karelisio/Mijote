@@ -59,6 +59,19 @@ export function compatible(a: string, b: string): boolean {
 const round = (n: number) => Math.round(n * 100) / 100;
 
 /** Adds `b` to `a`, converting units; picks a readable unit for the total. */
+/** Expresses large metric amounts in the bigger unit (1500 g → 1.5 kg, 100 cl → 1 l). */
+function tidy(q: { quantity: number | null; unit: string }): { quantity: number | null; unit: string } {
+  if (q.quantity === null) return q;
+  const u = getUnit(q.unit);
+  if (!u || u.rounding !== 'metric') return q;
+  const base = q.quantity * u.base;
+  if (u.kind === 'mass' && q.unit !== 'kg' && base >= 1000)
+    return { quantity: round(base / 1000), unit: 'kg' };
+  if (u.kind === 'volume' && q.unit !== 'l' && base >= 1000)
+    return { quantity: round(base / 1000), unit: 'l' };
+  return q;
+}
+
 export function addQuantities(
   a: { quantity: number | null; unit: string },
   b: { quantity: number | null; unit: string },
@@ -66,7 +79,7 @@ export function addQuantities(
   if (a.quantity === null)
     return { quantity: b.quantity, unit: b.quantity === null ? a.unit || b.unit : b.unit };
   if (b.quantity === null) return a;
-  if (a.unit === b.unit) return { quantity: round(a.quantity + b.quantity), unit: a.unit };
+  if (a.unit === b.unit) return tidy({ quantity: round(a.quantity + b.quantity), unit: a.unit });
   const fa = familyOf(a.unit)!;
   const fb = familyOf(b.unit)!;
   const total = a.quantity * fa.base + b.quantity * fb.base;

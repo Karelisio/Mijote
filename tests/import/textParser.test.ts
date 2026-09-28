@@ -144,3 +144,12 @@ Cuire le potiron et l'oignon puis mixer.`;
     expect(r.servings).toBe(6);
   });
 });
+
+describe('guessCategoryFromTitle', () => {
+  it('guesses common dishes', async () => {
+    const { guessCategoryFromTitle } = await import('@/import/category');
+    expect(guessCategoryFromTitle('Gâteau au yaourt')).toBe('dessert');
+    expect(guessCategoryFromTitle('Velouté de potimarron')).toBe('starter');
+    expect(guessCategoryFromTitle('Poulet rôti')).toBeNull();
+  });
+});

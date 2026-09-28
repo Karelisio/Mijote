@@ -103,3 +103,16 @@ describe('guessAisle', () => {
     expect(guessAisle('truc inconnu')).toBe('other');
   });
 });
+
+describe('unit tidying', () => {
+  it('promotes large same-unit sums', () => {
+    expect(addQuantities({ quantity: 50, unit: 'cl' }, { quantity: 50, unit: 'cl' })).toEqual({
+      quantity: 1,
+      unit: 'l',
+    });
+    expect(addQuantities({ quantity: 600, unit: 'g' }, { quantity: 600, unit: 'g' })).toEqual({
+      quantity: 1.2,
+      unit: 'kg',
+    });
+  });
+});

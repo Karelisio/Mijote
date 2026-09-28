@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AnimatePresence, Reorder, motion } from 'framer-motion';
+import { AnimatePresence, Reorder, motion, useDragControls } from 'framer-motion';
 import { Button, IconButton } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
 import { Segmented, Stepper, ListItem } from '@/ui/Controls';
@@ -46,7 +46,6 @@ function IngredientRow({
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
     >
-      <Icon name="drag_indicator" size={20} className="muted" />
       <div className="grow">
         <input
           className="ing-input"
@@ -72,6 +71,48 @@ function IngredientRow({
       </div>
       <IconButton icon="close" label={t('common.delete')} small onClick={onRemove} />
     </motion.div>
+  );
+}
+
+function StepEditItem({
+  step,
+  index,
+  autoFocus,
+  onText,
+  onRemove,
+}: {
+  step: { id: string; text: string };
+  index: number;
+  autoFocus: boolean;
+  onText: (text: string) => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  const controls = useDragControls();
+  // Dragging only from the handle keeps text selection and scrolling usable.
+  return (
+    <Reorder.Item value={step} className="step-edit" dragListener={false} dragControls={controls}>
+      <span className="step-num">{index + 1}</span>
+      <TextField
+        className="grow"
+        multiline
+        rows={2}
+        value={step.text}
+        placeholder={t('editor.stepPlaceholder')}
+        autoFocus={autoFocus}
+        onChange={onText}
+      />
+      <div className="col" style={{ gap: 0 }}>
+        <span
+          className="drag-handle"
+          onPointerDown={(e) => controls.start(e)}
+          aria-label={t('editor.moveDown')}
+        >
+          <Icon name="drag_indicator" />
+        </span>
+        <IconButton icon="close" small label={t('common.delete')} onClick={onRemove} />
+      </div>
+    </Reorder.Item>
   );
 }
 
@@ -255,29 +296,14 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
         className="step-edit-list"
       >
         {s.steps.map((st, idx) => (
-          <Reorder.Item key={st.id} value={st} className="step-edit">
-            <span className="step-num">{idx + 1}</span>
-            <TextField
-              className="grow"
-              multiline
-              rows={2}
-              value={st.text}
-              placeholder={t('editor.stepPlaceholder')}
-              autoFocus={focusId === st.id}
-              onChange={(text) => set({ steps: s.steps.map((x) => (x.id === st.id ? { ...x, text } : x)) })}
-            />
-            <div className="col" style={{ gap: 0 }}>
-              <span className="drag-handle">
-                <Icon name="drag_indicator" />
-              </span>
-              <IconButton
-                icon="close"
-                small
-                label={t('common.delete')}
-                onClick={() => set({ steps: s.steps.filter((x) => x.id !== st.id) })}
-              />
-            </div>
-          </Reorder.Item>
+          <StepEditItem
+            key={st.id}
+            step={st}
+            index={idx}
+            autoFocus={focusId === st.id}
+            onText={(text) => set({ steps: s.steps.map((x) => (x.id === st.id ? { ...x, text } : x)) })}
+            onRemove={() => set({ steps: s.steps.filter((x) => x.id !== st.id) })}
+          />
         ))}
       </Reorder.Group>
       <Button
