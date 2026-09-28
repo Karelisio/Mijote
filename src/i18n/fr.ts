@@ -323,4 +323,23 @@ export const fr = {
     version: 'Version {version}',
     aboutBody: 'Mijote — votre carnet de recettes, 100 % hors ligne.',
   },
+  update: {
+    section: 'Mises à jour',
+    current: 'Version installée : {version}',
+    check: 'Rechercher une mise à jour',
+    checking: 'Recherche en cours…',
+    upToDate: 'Mijote est à jour',
+    available: 'Version {version} disponible',
+    error: 'Impossible de vérifier les mises à jour',
+    availableTitle: 'Mijote {version} est disponible',
+    availableBody: 'Vous utilisez la version {current}.',
+    install: 'Mettre à jour',
+    later: 'Plus tard',
+    downloading: 'Téléchargement… {percent} %',
+    permissionTitle: 'Autorisation nécessaire',
+    permissionBody:
+      'Pour installer la mise à jour, autorisez Mijote à installer des applications, puis revenez ici.',
+    openSettings: 'Ouvrir les réglages',
+    storeManaged: 'Mises à jour gérées par Google Play',
+  },
 };

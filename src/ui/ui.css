@@ -1001,3 +1001,23 @@
   align-items: flex-start;
   gap: 0;
 }
+
+.update-notes {
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--md-surface-container-highest);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+}
+.update-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--md-error);
+  flex: none;
+}
