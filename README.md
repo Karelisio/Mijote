@@ -47,7 +47,7 @@ Sur Android :
 
 ```bash
 npm run cap:sync       # build web + cap sync android
-npx cap open android   # ou : npx cap run android
+npx cap open android   # ou : npx cap run android --flavor github
 ```
 
 Régénérer icônes et splash après modification de `assets/*.svg` :
@@ -55,6 +55,15 @@ Régénérer icônes et splash après modification de `assets/*.svg` :
 ```bash
 npm run assets
 ```
+
+## Variantes et mises à jour in-app
+
+| Variante | Artefact                 | Mises à jour                                                                                                                                                          |
+| -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github` | APK de la GitHub Release | intégrées : au lancement (toutes les 12 h max) et depuis Réglages → Mises à jour, Mijote consulte la dernière release, télécharge l'APK et ouvre l'installeur Android |
+| `play`   | AAB pour Google Play     | gérées par le Play Store (pas de permission `REQUEST_INSTALL_PACKAGES`)                                                                                               |
+
+Au premier update, Android demande d'autoriser Mijote à « installer des applications inconnues » ; l'app y renvoie puis reprend l'installation. L'APK est signé avec la même clé à chaque release, condition pour qu'Android accepte la mise à jour.
 
 ## Intégration Mago
 

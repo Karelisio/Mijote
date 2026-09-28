@@ -77,13 +77,13 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleGithubRelease bundlePlayRelease --no-daemon --stacktrace
 
       - name: Collect artifacts
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/release/app-release.apk "out/mijote-${{ steps.version.outputs.tag }}.apk"
-          cp android/app/build/outputs/bundle/release/app-release.aab "out/mijote-${{ steps.version.outputs.tag }}.aab"
+          cp android/app/build/outputs/apk/github/release/app-github-release.apk "out/mijote-${{ steps.version.outputs.tag }}.apk"
+          cp android/app/build/outputs/bundle/playRelease/app-play-release.aab "out/mijote-${{ steps.version.outputs.tag }}.aab"
           rm -f "$ANDROID_KEYSTORE_PATH"
 
       - name: Changelog from commits
@@ -99,7 +99,7 @@ jobs:
             echo
             git log --no-merges --pretty='- %s (%h)' $RANGE
             echo
-            echo "**APK** : installation directe · **AAB** : Google Play"
+            echo "**APK** : installation directe, mises à jour intégrées à l'app · **AAB** : Google Play"
           } > CHANGELOG_RELEASE.md
           cat CHANGELOG_RELEASE.md
 

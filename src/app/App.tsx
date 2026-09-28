@@ -16,6 +16,7 @@ import { RecipeDetailPage } from '@/features/recipes/RecipeDetailPage';
 import { usePendingImport } from '@/features/import/pendingImport';
 import { deepLinkToPath } from './deepLink';
 import { MagoDialogHost } from '@/features/mago/MagoDialogHost';
+import { UpdateDialogHost } from '@/features/update/UpdateDialogHost';
 
 const RecipeEditorPage = lazy(() => import('@/features/recipes/RecipeEditorPage'));
 const CookingPage = lazy(() => import('@/features/cooking/CookingPage'));
@@ -137,6 +138,7 @@ export function App() {
       {!isCooking && <ActiveTimersPill aboveNav={showNav} />}
       <SnackbarHost aboveNav={showNav} />
       <MagoDialogHost />
+      <UpdateDialogHost />
     </LayoutGroup>
   );
 }

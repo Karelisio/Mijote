@@ -1,18 +1,28 @@
 package com.karelisio.mijote;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Small native bridge for Mijote:
  * - text shared to the app ("Share to Mijote" from a browser), cold start and while running;
- * - Material You seed color derived from the wallpaper (Android 12+).
+ * - Material You seed color derived from the wallpaper (Android 12+);
+ * - in-app update of the GitHub APK build (download + system installer).
  */
 @CapacitorPlugin(name = "MijoteNative")
 public class MijoteNativePlugin extends Plugin {
@@ -71,5 +81,120 @@ public class MijoteNativePlugin extends Plugin {
             result.put("available", false);
         }
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getBuildInfo(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("flavor", BuildConfig.FLAVOR);
+        result.put("versionName", BuildConfig.VERSION_NAME);
+        result.put("versionCode", BuildConfig.VERSION_CODE);
+        result.put("updatesEnabled", BuildConfig.IN_APP_UPDATES);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void canInstallPackages(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("value", canInstall());
+        call.resolve(result);
+    }
+
+    /** Opens the "Install unknown apps" setting for Mijote (Android 8+). */
+    @PluginMethod
+    public void openInstallPermissionSettings(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent intent = new Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + getContext().getPackageName())
+            );
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        }
+        call.resolve();
+    }
+
+    /**
+     * Downloads the APK into the private cache (progress via "updateProgress" events)
+     * then hands it to the system package installer.
+     */
+    @PluginMethod
+    public void downloadAndInstallApk(PluginCall call) {
+        String url = call.getString("url");
+        if (!BuildConfig.IN_APP_UPDATES) {
+            call.reject("In-app updates are disabled in this build", "disabled");
+            return;
+        }
+        if (url == null || !url.startsWith("https://")) {
+            call.reject("A https url is required", "bad_url");
+            return;
+        }
+        if (!canInstall()) {
+            call.reject("Install permission not granted", "install_permission");
+            return;
+        }
+        new Thread(() -> {
+            HttpURLConnection connection = null;
+            try {
+                File dir = new File(getContext().getCacheDir(), "updates");
+                if (!dir.exists() && !dir.mkdirs()) throw new Exception("cannot create cache dir");
+                File apk = new File(dir, "mijote-update.apk");
+
+                connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setInstanceFollowRedirects(true);
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(30000);
+                connection.connect();
+                int code = connection.getResponseCode();
+                if (code < 200 || code > 299) throw new Exception("HTTP " + code);
+
+                long total = connection.getContentLengthLong();
+                long done = 0;
+                int lastPercent = -1;
+                try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                        done += read;
+                        if (total > 0) {
+                            int percent = (int) (done * 100 / total);
+                            if (percent != lastPercent) {
+                                lastPercent = percent;
+                                JSObject progress = new JSObject();
+                                progress.put("percent", percent);
+                                notifyListeners("updateProgress", progress);
+                            }
+                        }
+                    }
+                }
+
+                Uri apkUri = FileProvider.getUriForFile(
+                    getContext(),
+                    getContext().getPackageName() + ".fileprovider",
+                    apk
+                );
+                Intent install = new Intent(Intent.ACTION_VIEW);
+                install.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                getActivity().runOnUiThread(() -> {
+                    try {
+                        getActivity().startActivity(install);
+                        call.resolve();
+                    } catch (Exception e) {
+                        call.reject("Cannot open installer: " + e.getMessage(), "installer");
+                    }
+                });
+            } catch (Exception e) {
+                call.reject("Download failed: " + e.getMessage(), "download");
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
+    private boolean canInstall() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
+        return getContext().getPackageManager().canRequestPackageInstalls();
     }
 }

@@ -12,6 +12,7 @@ import { useSettings, type LanguagePref, type ThemeMode } from '@/store/settings
 import { snackbar } from '@/store/snackbar';
 import { SEED_PRESETS } from '@/theme/palette';
 import { getDynamicSeed, isNative } from '@/platform/native';
+import { useUpdate } from '@/features/update/update';
 import { seedSampleRecipes } from '@/db/seed';
 import { db, refreshRecipes } from '@/store/recipes';
 import {
@@ -32,6 +33,40 @@ function pickZip(): Promise<File | null> {
     input.oncancel = () => resolve(null);
     input.click();
   });
+}
+
+function UpdateSection() {
+  const t = useT();
+  const { supported, status, latest, check } = useUpdate();
+  if (!isNative()) return null;
+  const supporting = !supported
+    ? t('update.storeManaged')
+    : status === 'checking'
+      ? t('update.checking')
+      : status === 'available' && latest
+        ? t('update.available', { version: latest.version })
+        : status === 'upToDate'
+          ? t('update.upToDate')
+          : status === 'error'
+            ? t('update.error')
+            : t('update.current', { version: __APP_VERSION__ });
+  return (
+    <>
+      <div className="section-title label-large">{t('update.section')}</div>
+      <ListItem
+        icon="download"
+        headline={supported ? t('update.check') : t('update.current', { version: __APP_VERSION__ })}
+        supporting={supporting}
+        onClick={
+          supported
+            ? () =>
+                status === 'available' ? useUpdate.setState({ prompt: true }) : void check({ silent: false })
+            : undefined
+        }
+        trailing={status === 'available' ? <span className="update-dot" /> : undefined}
+      />
+    </>
+  );
 }
 
 export default function SettingsPage() {
@@ -213,6 +248,8 @@ export default function SettingsPage() {
           }, t('settings.samplesDone'))
         }
       />
+
+      <UpdateSection />
 
       <div className="section-title label-large">{t('settings.about')}</div>
       <div className="about">

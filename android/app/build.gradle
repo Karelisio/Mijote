@@ -36,6 +36,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    buildFeatures {
+        buildConfig = true
+    }
+    // github: APK published on GitHub Releases, updates itself in-app.
+    // play:   AAB for Google Play (Play handles updates; no install permission).
+    flavorDimensions = ['distribution']
+    productFlavors {
+        github {
+            dimension 'distribution'
+            buildConfigField 'boolean', 'IN_APP_UPDATES', 'true'
+        }
+        play {
+            dimension 'distribution'
+            buildConfigField 'boolean', 'IN_APP_UPDATES', 'false'
+        }
+    }
     signingConfigs {
         if (hasReleaseSigning) {
             release {
