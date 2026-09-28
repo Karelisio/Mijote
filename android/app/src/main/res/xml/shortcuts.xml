@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_recipe"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new_recipe_short"
+        android:shortcutLongLabel="@string/shortcut_new_recipe_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.karelisio.mijote"
+            android:targetClass="com.karelisio.mijote.MainActivity"
+            android:data="mijote://recipes/new" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="shopping_list"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_cart"
+        android:shortcutShortLabel="@string/shortcut_shopping_short"
+        android:shortcutLongLabel="@string/shortcut_shopping_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.karelisio.mijote"
+            android:targetClass="com.karelisio.mijote.MainActivity"
+            android:data="mijote://shopping" />
+    </shortcut>
+</shortcuts>

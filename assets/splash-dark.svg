@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732" width="2732" height="2732">
+  <title>Mijote splash - dark</title>
+  <rect x="0" y="0" width="2732" height="2732" fill="#1A110D" />
+  <circle cx="1366" cy="1366" r="470" fill="#2A1A12" />
+  <g transform="translate(641.6,641.6) scale(1.4151)" fill="none" fill-rule="evenodd">
+    <g stroke="#E08A5B" stroke-width="26" stroke-linecap="round" opacity="0.55">
+      <path d="M456,464 C412,418 472,378 440,330 C416,294 452,272 450,246" />
+      <path d="M512,464 C470,412 556,378 512,326 C476,284 522,256 512,230" />
+      <path d="M568,464 C612,418 552,378 584,330 C608,294 572,272 574,246" />
+    </g>
+    <g stroke="#E08A5B" stroke-width="34" stroke-linecap="round">
+      <path d="M348,612 C300,612 300,696 348,696" />
+      <path d="M676,612 C724,612 724,696 676,696" />
+    </g>
+    <path fill="#C96A3D" d="M382,556 C338,556 344,640 350,660 C358,740 402,794 512,794 C622,794 666,740 674,660 C680,640 686,556 642,556 Z" />
+    <path fill="#EFA377" d="M390,552 H634 A8,8 0 0 1 642,560 V560 A8,8 0 0 1 634,568 H390 A8,8 0 0 1 382,560 V560 A8,8 0 0 1 390,552 Z" />
+    <path fill="#E08A5B" d="M372,556 C372,528 424,512 512,512 C600,512 652,528 652,556 L652,574 C652,584 610,590 512,590 C414,590 372,584 372,574 Z" />
+    <path fill="#E08A5B" d="M536,502 A24,24 0 1,1 488,502 A24,24 0 1,1 536,502 Z" />
+  </g>
+</svg>

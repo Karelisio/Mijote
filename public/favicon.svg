@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Mijote favicon</title>
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="#FFE4D3" />
+  <g fill="none" fill-rule="evenodd">
+    <g stroke="#8B3F1D" stroke-width="30" stroke-linecap="round" opacity="0.55">
+      <path d="M512,464 C470,412 556,378 512,326 C476,284 522,256 512,230" />
+    </g>
+    <g stroke="#8B3F1D" stroke-width="38" stroke-linecap="round">
+      <path d="M340,612 C288,612 288,696 340,696" />
+      <path d="M684,612 C736,612 736,696 684,696" />
+    </g>
+    <path fill="#B5562A" d="M382,556 C338,556 344,640 350,660 C358,740 402,794 512,794 C622,794 666,740 674,660 C680,640 686,556 642,556 Z" />
+    <path fill="#D97B4E" d="M390,552 H634 A8,8 0 0 1 642,560 V560 A8,8 0 0 1 634,568 H390 A8,8 0 0 1 382,560 V560 A8,8 0 0 1 390,552 Z" />
+    <path fill="#8B3F1D" d="M372,556 C372,528 424,512 512,512 C600,512 652,528 652,556 L652,574 C652,584 610,590 512,590 C414,590 372,584 372,574 Z" />
+    <path fill="#8B3F1D" d="M536,502 A24,24 0 1,1 488,502 A24,24 0 1,1 536,502 Z" />
+  </g>
+</svg>
