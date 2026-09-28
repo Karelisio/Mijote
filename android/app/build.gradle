@@ -1,5 +1,25 @@
 apply plugin: 'com.android.application'
 
+// Version derived from the git tag (vX.Y.Z): CI passes VERSION_NAME, locally `git describe` is used.
+def resolveVersionName = { ->
+    def fromEnv = System.getenv('VERSION_NAME')
+    if (fromEnv) return fromEnv
+    try {
+        def proc = ['git', 'describe', '--tags', '--abbrev=0', '--match', 'v*'].execute(null, rootProject.projectDir)
+        proc.waitFor()
+        if (proc.exitValue() == 0) return proc.text.trim()
+    } catch (ignored) {}
+    return '1.0.0'
+}
+def appVersionName = resolveVersionName().replaceFirst(/^v/, '')
+def versionParts = (appVersionName.tokenize('.-') + ['0', '0', '0']).take(3).collect { it.isInteger() ? it.toInteger() : 0 }
+// 1.2.3 -> 10203 (supports minor/patch up to 99)
+def appVersionCode = Math.max(1, versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2])
+
+// Release signing from environment (set by the release workflow).
+def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def hasReleaseSigning = keystorePath && file(keystorePath).exists()
+
 android {
     namespace = "com.karelisio.mijote"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +27,8 @@ android {
         applicationId "com.karelisio.mijote"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +36,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

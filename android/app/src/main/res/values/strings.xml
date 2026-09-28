@@ -4,4 +4,9 @@
     <string name="title_activity_main">Mijote</string>
     <string name="package_name">com.karelisio.mijote</string>
     <string name="custom_url_scheme">com.karelisio.mijote</string>
+    <string name="share_label">Save to Mijote</string>
+    <string name="shortcut_new_recipe_short">New recipe</string>
+    <string name="shortcut_new_recipe_long">Add a new recipe</string>
+    <string name="shortcut_shopping_short">Shopping list</string>
+    <string name="shortcut_shopping_long">Open the shopping list</string>
 </resources>
