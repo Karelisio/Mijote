@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version à publier (ex. v1.0.1). Vide = dernier tag.'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build signed APK + AAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            TAG="${{ github.event.inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v1.0.0)"
+          fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag invalide: $TAG (attendu vX.Y.Z)"; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: Build web app
+        run: npm run build
+        env:
+          APP_VERSION: ${{ steps.version.outputs.name }}
+
+      - run: npx cap sync android
+
+      - name: Decode keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Secret ANDROID_KEYSTORE_BASE64 manquant"; exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed APK and AAB
+        working-directory: android
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.tag }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/mijote-${{ steps.version.outputs.tag }}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "out/mijote-${{ steps.version.outputs.tag }}.aab"
+          rm -f "$ANDROID_KEYSTORE_PATH"
+
+      - name: Changelog from commits
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+          RANGE="${PREV:+$PREV..}$TAG"
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || RANGE="${PREV:+$PREV..}HEAD"
+          {
+            echo "## Mijote $TAG"
+            echo
+            if [ -n "$PREV" ]; then echo "Changements depuis $PREV :"; else echo "Première version."; fi
+            echo
+            git log --no-merges --pretty='- %s (%h)' $RANGE
+            echo
+            echo "**APK** : installation directe · **AAB** : Google Play"
+          } > CHANGELOG_RELEASE.md
+          cat CHANGELOG_RELEASE.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Mijote ${{ steps.version.outputs.tag }}
+          body_path: CHANGELOG_RELEASE.md
+          files: |
+            out/*.apk
+            out/*.aab
