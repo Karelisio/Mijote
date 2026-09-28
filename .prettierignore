@@ -1,0 +1,6 @@
+dist
+android
+node_modules
+package-lock.json
+src/ui/icons.generated.ts
+tests/fixtures
