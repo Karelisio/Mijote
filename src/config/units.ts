@@ -319,7 +319,7 @@ export function getUnit(key: string): UnitDef | undefined {
 
 /** Lower-case and strip accents. Shared normaliser for all matching logic. */
 export function normalizeText(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe').replace(/æ/g, 'ae').toLowerCase().trim();
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe').replace(/æ/g, 'ae').trim();
 }
 
 const aliasMap = new Map<string, string>();
