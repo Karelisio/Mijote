@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mijote Android 13+ themed (monochrome) icon: single-color pot silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:pathData="M456,464 C412,418 472,378 440,330 C416,294 452,272 450,246"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M512,464 C470,412 556,378 512,326 C476,284 522,256 512,230"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M568,464 C612,418 552,378 584,330 C608,294 572,272 574,246"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M348,612 C300,612 300,696 348,696"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="34"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M676,612 C724,612 724,696 676,696"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="34"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M382,556 C338,556 344,640 350,660 C358,740 402,794 512,794 C622,794 666,740 674,660 C680,640 686,556 642,556 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M372,556 C372,528 424,512 512,512 C600,512 652,528 652,556 L652,574 C652,584 610,590 512,590 C414,590 372,584 372,574 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M536,502 A24,24 0 1,1 488,502 A24,24 0 1,1 536,502 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>
