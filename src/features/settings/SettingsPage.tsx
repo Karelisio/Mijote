@@ -207,7 +207,8 @@ export default function SettingsPage() {
         supporting={t('settings.samplesHint')}
         onClick={() =>
           void run(async () => {
-            await seedSampleRecipes(await db(), lang);
+            const { createSamplePhotos } = await import('@/db/samplePhotos');
+            await seedSampleRecipes(await db(), lang, await createSamplePhotos());
             await refreshRecipes();
           }, t('settings.samplesDone'))
         }

@@ -1,5 +1,23 @@
-import type { Id, RecipeSummary } from '@/db/types';
-import type { RecipeFilters, Scope } from '@/store/recipes';
+import type { Category, Id, RecipeSummary } from '@/db/types';
+
+export interface RecipeFilters {
+  categories: Category[];
+  maxMinutes: number | null;
+  tags: string[];
+  minRating: number;
+  favoritesOnly: boolean;
+}
+
+export const EMPTY_FILTERS: RecipeFilters = {
+  categories: [],
+  maxMinutes: null,
+  tags: [],
+  minRating: 0,
+  favoritesOnly: false,
+};
+
+/** 'all' | 'favorites' | collection id */
+export type Scope = string;
 
 export function totalMinutes(r: Pick<RecipeSummary, 'prepMinutes' | 'cookMinutes'>): number | null {
   if (r.prepMinutes === null && r.cookMinutes === null) return null;

@@ -1,31 +1,15 @@
 import { create } from 'zustand';
-import type { Category, Collection, Id, RecipeSummary } from '@/db/types';
+import type { Collection, Id, RecipeSummary } from '@/db/types';
 import { getDb } from '@/db/database';
 import type { DbDriver } from '@/db/driver';
 import { listRecipeSummaries } from '@/db/repos/recipes';
 import { collectionMembership, listCollections } from '@/db/repos/collections';
 import { currentLang } from '@/i18n';
+import { EMPTY_FILTERS, type RecipeFilters, type Scope } from '@/features/recipes/filter';
 
 export const db = (): Promise<DbDriver> => getDb(currentLang());
 
-export interface RecipeFilters {
-  categories: Category[];
-  maxMinutes: number | null;
-  tags: string[];
-  minRating: number;
-  favoritesOnly: boolean;
-}
-
-export const EMPTY_FILTERS: RecipeFilters = {
-  categories: [],
-  maxMinutes: null,
-  tags: [],
-  minRating: 0,
-  favoritesOnly: false,
-};
-
-/** 'all' | 'favorites' | collection id */
-export type Scope = string;
+export { EMPTY_FILTERS, type RecipeFilters, type Scope } from '@/features/recipes/filter';
 
 interface RecipesState {
   loaded: boolean;

@@ -276,8 +276,12 @@ export function sampleRecipes(lang: 'fr' | 'en', now = Date.now()): Recipe[] {
   return (lang === 'en' ? EN : FR).map((s, i) => toRecipe(s, now - i * 1000));
 }
 
-export async function seedSampleRecipes(db: DbDriver, lang: 'fr' | 'en'): Promise<void> {
-  const recipes = sampleRecipes(lang);
+export async function seedSampleRecipes(
+  db: DbDriver,
+  lang: 'fr' | 'en',
+  photos: (string | null)[] = [],
+): Promise<void> {
+  const recipes = sampleRecipes(lang).map((r, i) => ({ ...r, photo: photos[i] ?? null }));
   await db.transaction(async (tx) => {
     for (const r of recipes) await saveRecipeTx(tx, r);
   });

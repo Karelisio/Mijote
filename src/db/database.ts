@@ -23,7 +23,8 @@ async function init(lang: 'fr' | 'en'): Promise<DbDriver> {
   const db = await open();
   await migrate(db);
   if ((await getMeta(db, 'seeded')) === null) {
-    await seedSampleRecipes(db, lang);
+    const { createSamplePhotos } = await import('./samplePhotos');
+    await seedSampleRecipes(db, lang, await createSamplePhotos());
     await setMeta(db, 'seeded', String(Date.now()));
   }
   return db;
