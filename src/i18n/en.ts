@@ -173,6 +173,8 @@ export const en: Dict = {
     textLabel: 'Recipe text',
     textHint: 'Paste the title, ingredients and steps: Mijote splits them automatically.',
     paste: 'Paste',
+    pasteFailed: 'Could not read the clipboard: paste the text into the field (long press).',
+    clipboardEmpty: 'The clipboard is empty.',
     analyze: 'Analyse',
     loading: 'Reading the recipe…',
     errorNetwork: 'Could not load the page. Check your connection.',

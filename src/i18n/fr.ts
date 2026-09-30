@@ -172,6 +172,8 @@ export const fr = {
     textLabel: 'Texte de la recette',
     textHint: 'Collez le titre, les ingrédients et les étapes : Mijote les sépare automatiquement.',
     paste: 'Coller',
+    pasteFailed: 'Impossible de lire le presse-papiers : collez le texte dans le champ (appui long).',
+    clipboardEmpty: 'Le presse-papiers est vide.',
     analyze: 'Analyser',
     loading: 'Lecture de la recette…',
     errorNetwork: 'Impossible de charger la page. Vérifiez votre connexion.',

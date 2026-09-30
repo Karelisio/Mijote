@@ -9,17 +9,11 @@ import { LinearProgress } from '@/ui/Controls';
 import { useT, type TKey } from '@/i18n';
 import { importFromUrl, normalizeUrl, parseRecipeText } from '@/import';
 import type { ImportedRecipe } from '@/db/types';
+import { readClipboardText } from '@/platform/clipboard';
+import { snackbar } from '@/store/snackbar';
 import { usePendingImport } from './pendingImport';
 
 type Mode = 'url' | 'text';
-
-async function readClipboard(): Promise<string> {
-  try {
-    return (await navigator.clipboard?.readText()) ?? '';
-  } catch {
-    return '';
-  }
-}
 
 export default function ImportPage() {
   const t = useT();
@@ -32,6 +26,14 @@ export default function ImportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<TKey | null>(null);
   const handledShare = useRef(false);
+
+  /** Pastes the clipboard into a field, or says why nothing was pasted. */
+  const paste = async (apply: (text: string) => void) => {
+    const text = await readClipboardText();
+    if (text === null) snackbar(t('import.pasteFailed'));
+    else if (!text.trim()) snackbar(t('import.clipboardEmpty'));
+    else apply(text);
+  };
 
   const done = (r: ImportedRecipe) => {
     setDraft(r);
@@ -145,7 +147,7 @@ export default function ImportPage() {
                 trailing={
                   <Button
                     variant="text"
-                    onClick={() => void readClipboard().then((c) => c && setUrl(normalizeUrl(c) ?? c))}
+                    onClick={() => void paste((c) => setUrl(normalizeUrl(c) ?? c.trim()))}
                   >
                     {t('import.paste')}
                   </Button>
@@ -166,11 +168,7 @@ export default function ImportPage() {
                 supporting={t('import.textHint')}
               />
               <div className="row">
-                <Button
-                  variant="tonal"
-                  icon="content_paste"
-                  onClick={() => void readClipboard().then((c) => c && setText(c))}
-                >
+                <Button variant="tonal" icon="content_paste" onClick={() => void paste(setText)}>
                   {t('import.paste')}
                 </Button>
                 <Button
