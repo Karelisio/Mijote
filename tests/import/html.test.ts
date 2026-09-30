@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeUrl } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseRecipeHtml } from '@/import/html';
+import { extractHeuristics } from '@/import/html/heuristics';
 
 function fixture(name: string): string {
   return readFileSync(new NodeUrl(`../fixtures/${name}`, import.meta.url), 'utf8');
@@ -202,5 +203,78 @@ describe('parseRecipeHtml — no-recipe.html', () => {
   it('returns null for a page with no recipe content', () => {
     const url = 'https://blog.example.com/articles/choisir-couteau';
     expect(parseRecipeHtml(fixture('no-recipe.html'), url)).toBeNull();
+  });
+});
+
+describe('extractHeuristics — generic blog pages', () => {
+  const parse = (body: string) =>
+    extractHeuristics(
+      new DOMParser().parseFromString(`<html><body>${body}</body></html>`, 'text/html'),
+      'https://blog.example.com/recette',
+    );
+
+  it('reads each list once and stops at the comments, forms, footer and menus', () => {
+    const r = parse(`
+      <nav><ul><li>Accueil</li><li>Recettes</li></ul></nav>
+      <article>
+        <h1>Tarte</h1>
+        <p><strong>Temps de préparation : 20 min</strong></p>
+        <h2>Ingrédients</h2>
+        <ul><li>200 g de farine</li><li>3 œufs</li></ul>
+        <h2>Préparation</h2>
+        <ol><li><p>Mélanger la farine.</p></li><li><p>Cuire <strong>20 min</strong>.</p></li></ol>
+        <p><strong>Ne pas trop cuire.</strong></p>
+        <h2>Commentaires</h2>
+        <p>Super recette, merci !</p>
+        <ul><li>Répondre</li></ul>
+      </article>
+      <form class="newsletter"><p>Inscrivez-vous</p></form>
+      <footer><ul><li>Mentions légales</li></ul></footer>`);
+    expect(r?.sections).toEqual([{ name: '', lines: ['200 g de farine', '3 œufs'] }]);
+    expect(r?.steps).toEqual(['Mélanger la farine.', 'Cuire 20 min.', 'Ne pas trop cuire.']);
+  });
+
+  it('does not take "Temps de préparation" for the steps heading', () => {
+    const r = parse(`
+      <h2>Ingrédients</h2>
+      <ul><li>1 citron</li></ul>
+      <h3>Temps de préparation</h3>
+      <p>15 minutes</p>
+      <h2>Étapes</h2>
+      <p>Presser le citron.</p>`);
+    expect(r?.sections[0]?.lines).toEqual(['1 citron']);
+    expect(r?.steps).toEqual(['Presser le citron.']);
+  });
+
+  it('keeps to the main content and ends the steps at the next heading of the same level', () => {
+    const r = parse(`
+      <div class="sidebar"><h2>Préparation</h2><p>Nos meilleures recettes</p></div>
+      <main>
+        <article>
+          <h3>Ingrédients</h3>
+          <p><strong>Pour la sauce :</strong></p>
+          <ul><li>2 tomates</li></ul>
+          <h3>Préparation</h3>
+          <h4>Étape 1</h4>
+          <p>Couper les tomates.</p>
+          <p>Cuire 10 min.</p>
+          <h3>Vous aimerez aussi</h3>
+          <ul><li>Gratin de courgettes</li></ul>
+          <p>Partagez cette recette !</p>
+        </article>
+      </main>
+      <div class="widget"><ul><li>Archives</li></ul></div>`);
+    expect(r?.sections).toEqual([{ name: 'Sauce', lines: ['2 tomates'] }]);
+    expect(r?.steps).toEqual(['Couper les tomates.', 'Cuire 10 min.']);
+  });
+
+  it('keeps a page-wide form wrapping the whole content', () => {
+    const r = parse(`
+      <form id="aspnetForm">
+        <h2>Ingrédients</h2><ul><li>1 poulet</li></ul>
+        <h2>Préparation</h2><ol><li>Rôtir 1 h.</li></ol>
+      </form>`);
+    expect(r?.sections[0]?.lines).toEqual(['1 poulet']);
+    expect(r?.steps).toEqual(['Rôtir 1 h.']);
   });
 });

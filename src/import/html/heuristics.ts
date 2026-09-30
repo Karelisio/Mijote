@@ -101,56 +101,132 @@ function extractCuisineAz(doc: Document, url: string): ImportedRecipe | null {
 }
 
 const ING_HEADING_RE = /ingr[ée]dients?/i;
-const STEPS_HEADING_RE = /pr[ée]parations?|instructions?|[ée]tapes?|method|directions?/i;
+// "Préparation", "Étapes", "Instructions"… but not "Temps de préparation : 20 min".
+const STEPS_HEADING_RE =
+  /^(?:les\s+)?(?:pr[ée]parations?|instructions?|[ée]tapes?|m[ée]thode|method|directions?)\b/i;
+const TIME_RE = /\b(?:temps|time|dur[ée]e)\b/i;
+const SUBSECTION_RE = /^(?:pour\s+(?:la|le|les|l['’])|for\s+the)\b|:$/i;
 
-function isHeadingEl(el: Element): boolean {
+/** Parts of a page that are never the recipe: menus, sidebars, footers, comments, forms, sharing. */
+const NOT_CONTENT = [
+  'nav',
+  'aside',
+  'footer',
+  'form',
+  '[role="navigation"]',
+  '[role="complementary"]',
+  '[role="contentinfo"]',
+  '[id*="comment" i]',
+  '[class*="comment" i]',
+  '[class*="newsletter" i]',
+  '[class*="related" i]',
+  '[class*="share" i]',
+].join(', ');
+
+/**
+ * Heading level: h1–h6, then 7 for "p.title" and a short bold label alone in its paragraph
+ * ("<p><strong>Préparation</strong></p>"). Bold words inside a sentence are not headings.
+ */
+function headingLevel(el: Element): number | null {
   const tag = el.tagName.toLowerCase();
-  if (tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'strong') return true;
-  return tag === 'p' && el.classList.contains('title');
+  const h = /^h([1-6])$/.exec(tag);
+  if (h) return Number(h[1]);
+  if (tag === 'p' && el.classList.contains('title')) return 7;
+  const block = tag === 'p' ? el : tag === 'strong' || tag === 'b' ? el.parentElement : null;
+  const bold = tag === 'p' ? Array.from(el.children).find((c) => /^(?:strong|b)$/i.test(c.tagName)) : el;
+  if (!block || !bold) return null;
+  const text = cleanText(bold.textContent ?? '');
+  // A short label, not a whole bold sentence ("Ne pas trop cuire.").
+  if (!text || text.length > 60 || /[.!?]$/.test(text)) return null;
+  return text === cleanText(block.textContent ?? '') ? 7 : null;
+}
+
+function isStepsHeading(text: string): boolean {
+  return STEPS_HEADING_RE.test(text) && !TIME_RE.test(text);
+}
+
+function isIngredientsHeading(text: string): boolean {
+  return ING_HEADING_RE.test(text) && !TIME_RE.test(text) && text.length <= 60;
 }
 
 function cleanSubName(text: string): string {
   let s = text.trim().replace(/:$/, '').trim();
-  s = s.replace(/^pour\s+(?:la|le|les)\s+/i, '').replace(/^for\s+the\s+/i, '');
+  s = s
+    .replace(/^pour\s+(?:la|le|les)\s+/i, '')
+    .replace(/^pour\s+l['’]\s*/i, '')
+    .replace(/^for\s+the\s+/i, '');
   s = s.trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-/** Generic fallback: walks the body in document order, tracking headings → lists/paragraphs. */
-function extractGeneric(doc: Document, url: string): ImportedRecipe | null {
+function isIngredientsHeadingEl(el: Element): boolean {
+  return headingLevel(el) !== null && isIngredientsHeading(cleanText(el.textContent ?? ''));
+}
+
+const HEADING_CANDIDATES = 'h1, h2, h3, h4, h5, h6, p, strong, b';
+
+/**
+ * The part of the page holding the recipe: the innermost article/main containing an
+ * ingredients heading, else the body.
+ */
+function contentRoot(doc: Document): Element {
   const body = doc.body ?? doc.documentElement;
-  const all = Array.from(body.querySelectorAll('*'));
+  const candidates = Array.from(body.querySelectorAll('article, main, [role="main"]')).filter((c) =>
+    Array.from(c.querySelectorAll(HEADING_CANDIDATES)).some(isIngredientsHeadingEl),
+  );
+  return candidates.find((c) => !candidates.some((o) => o !== c && c.contains(o))) ?? body;
+}
+
+/**
+ * Generic fallback: walks the main content in document order, tracking headings → lists and
+ * paragraphs. A section ends at the next heading of the same or a higher level, and what is
+ * inside a list already read is not read again.
+ */
+function extractGeneric(doc: Document, url: string): ImportedRecipe | null {
+  const root = contentRoot(doc);
+  const all = Array.from(root.querySelectorAll('*'));
 
   let mode: 'none' | 'ingredients' | 'steps' = 'none';
+  let modeLevel = 7;
   let currentSectionName = '';
   const sections: Sections = [];
   const steps: string[] = [];
-  const consumedLists = new Set<Element>();
+  const done: Element[] = [];
+
+  // A region holding the recipe itself (e.g. an ASP.NET page-wide <form>) is never skipped.
+  const anchor = Array.from(root.querySelectorAll(HEADING_CANDIDATES)).find(isIngredientsHeadingEl);
+  const excluded = (el: Element) => {
+    const region = el.closest(NOT_CONTENT);
+    return !!region && root.contains(region) && !(anchor && region.contains(anchor));
+  };
 
   for (const el of all) {
+    if (done.some((d) => d.contains(el)) || excluded(el)) continue;
     const tag = el.tagName.toLowerCase();
 
-    if (isHeadingEl(el)) {
+    const level = headingLevel(el);
+    if (level !== null) {
+      done.push(el);
       const text = cleanText(el.textContent ?? '');
-      if (ING_HEADING_RE.test(text)) {
+      if (isIngredientsHeading(text)) {
         mode = 'ingredients';
+        modeLevel = level;
         currentSectionName = '';
-        continue;
-      }
-      if (STEPS_HEADING_RE.test(text)) {
+      } else if (isStepsHeading(text)) {
         mode = 'steps';
-        continue;
-      }
-      if (mode === 'ingredients' && text && text.length <= 50) {
-        currentSectionName = cleanSubName(text);
+        modeLevel = level;
+      } else if (mode === 'ingredients' && (level > modeLevel || SUBSECTION_RE.test(text))) {
+        if (text && text.length <= 50) currentSectionName = cleanSubName(text);
+      } else if (mode !== 'none' && level <= modeLevel) {
+        mode = 'none'; // next part of the page (comments, "you may also like"…)
       }
       continue;
     }
 
-    if ((tag === 'ul' || tag === 'ol') && !consumedLists.has(el) && mode !== 'none') {
+    if ((tag === 'ul' || tag === 'ol') && mode !== 'none') {
       const liTexts = textsOf(Array.from(el.children).filter((c) => c.tagName.toLowerCase() === 'li'));
       if (liTexts.length === 0) continue;
-      consumedLists.add(el);
+      done.push(el);
       if (mode === 'ingredients') addToSection(sections, currentSectionName, liTexts);
       else steps.push(...liTexts);
       continue;
