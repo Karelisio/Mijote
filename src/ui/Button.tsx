@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 
 type ButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text';
@@ -53,18 +53,10 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: number;
 }
 
-export function IconButton({
-  icon,
-  label,
-  variant = 'standard',
-  selected,
-  fill,
-  small,
-  size,
-  className,
-  type = 'button',
-  ...rest
-}: IconButtonProps) {
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { icon, label, variant = 'standard', selected, fill, small, size, className, type = 'button', ...rest },
+  ref,
+) {
   const cls = [
     'icon-btn',
     'ripple',
@@ -76,8 +68,16 @@ export function IconButton({
     .filter(Boolean)
     .join(' ');
   return (
-    <button type={type} className={cls} aria-label={label} title={label} aria-pressed={selected} {...rest}>
+    <button
+      ref={ref}
+      type={type}
+      className={cls}
+      aria-label={label}
+      title={label}
+      aria-pressed={selected}
+      {...rest}
+    >
       <Icon name={icon} fill={fill ?? selected} size={size} />
     </button>
   );
-}
+});

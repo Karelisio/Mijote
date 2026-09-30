@@ -308,10 +308,9 @@ export default function CookingPage() {
               const on = checked.has(i.id);
               const amount = formatAmount(scaleIngredient(i, factor), lang);
               return (
+                // The row is a tap shortcut; the checkbox is the accessible control.
                 <div
                   key={i.id}
-                  role="button"
-                  tabIndex={0}
                   className={`cook-ing ripple${on ? ' on' : ''}`}
                   onClick={() => toggleIngredient(i.id)}
                 >

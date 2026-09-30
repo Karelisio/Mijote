@@ -54,12 +54,8 @@ const ItemRow = memo(function ItemRow({
         )
       }
     >
-      <div
-        className={`shop-item${item.checked ? ' checked' : ''}`}
-        onClick={() => void toggle(item.id)}
-        role="button"
-        tabIndex={0}
-      >
+      {/* Tapping the row is a shortcut; its checkbox and edit button are the accessible controls. */}
+      <div className={`shop-item${item.checked ? ' checked' : ''}`} onClick={() => void toggle(item.id)}>
         <Checkbox checked={item.checked} label={item.name} onChange={() => void toggle(item.id)} />
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="shop-item-name">

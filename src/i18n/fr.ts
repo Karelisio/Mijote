@@ -21,6 +21,8 @@ export const fr = {
     tomorrow: 'Demain',
     error: 'Une erreur est survenue',
     megabytes: '{size} Mo',
+    decrease: 'Diminuer',
+    increase: 'Augmenter',
   },
   startup: {
     errorTitle: 'Impossible d’ouvrir vos recettes',

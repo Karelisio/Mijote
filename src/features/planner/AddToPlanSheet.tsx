@@ -97,7 +97,7 @@ export function AddToPlanSheet({
       </div>
       <div className="filter-block row" style={{ justifyContent: 'space-between' }}>
         <span className="body-large">{t('planner.servings')}</span>
-        <Stepper value={n} onChange={setN} labelMinus="-" labelPlus="+" />
+        <Stepper value={n} onChange={setN} />
       </div>
     </BottomSheet>
   );

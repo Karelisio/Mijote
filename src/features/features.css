@@ -55,8 +55,8 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -89,7 +89,7 @@
 }
 .recipe-card.list .recipe-card-fav {
   top: 50%;
-  margin-top: -18px;
+  margin-top: -20px;
   right: 8px;
   background: transparent;
   backdrop-filter: none;
@@ -413,6 +413,10 @@
 .step-edit .step-num {
   margin-top: 14px;
 }
+.step-edit-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 40px);
+}
 .drag-handle {
   display: flex;
   width: 40px;
@@ -592,8 +596,8 @@
   }
 }
 .cook-timer-plus {
-  height: 36px;
-  min-width: 44px;
+  height: 40px;
+  min-width: 48px;
   border-radius: 18px;
   font-weight: 700;
   color: var(--md-primary);

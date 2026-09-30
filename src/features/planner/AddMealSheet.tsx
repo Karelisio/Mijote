@@ -63,7 +63,7 @@ export function AddMealSheet({
         />
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <span className="body-large">{t('planner.servings')}</span>
-          <Stepper value={servings} onChange={setServings} labelMinus="-" labelPlus="+" />
+          <Stepper value={servings} onChange={setServings} />
         </div>
         <label className="searchbar" style={{ margin: 0 }}>
           <Icon name="search" />

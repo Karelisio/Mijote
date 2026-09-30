@@ -23,6 +23,8 @@ export const en: Dict = {
     tomorrow: 'Tomorrow',
     error: 'Something went wrong',
     megabytes: '{size} MB',
+    decrease: 'Decrease',
+    increase: 'Increase',
   },
   startup: {
     errorTitle: 'Could not open your recipes',

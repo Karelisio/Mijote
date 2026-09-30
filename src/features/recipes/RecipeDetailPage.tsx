@@ -274,8 +274,6 @@ export function RecipeDetailPage() {
             <Stepper
               value={servings}
               onChange={setServings}
-              labelMinus="-"
-              labelPlus="+"
               format={(v) => (
                 <span className="row" style={{ gap: 4, justifyContent: 'center' }}>
                   <Icon name="group" size={18} />

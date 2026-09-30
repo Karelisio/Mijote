@@ -814,7 +814,7 @@
 }
 .stars button {
   display: inline-flex;
-  padding: 4px;
+  padding: 8px 4px;
   color: var(--md-outline);
 }
 .stars .on {
