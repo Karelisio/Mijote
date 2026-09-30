@@ -49,6 +49,18 @@ describe('parseRelease', () => {
         assets: [{ name: 'a.apk', browser_download_url: 'http://insecure/a.apk' }],
       }),
     ).toBeNull();
+    expect(
+      parseRelease({
+        ...payload,
+        assets: [{ name: 'a.apk', browser_download_url: 'https://github.com.evil.io/a.apk' }],
+      }),
+    ).toBeNull();
+    expect(
+      parseRelease({
+        ...payload,
+        assets: [{ name: 'a.apk', browser_download_url: 'https://evil.io/github.com/a.apk' }],
+      }),
+    ).toBeNull();
     expect(parseRelease(null)).toBeNull();
   });
 

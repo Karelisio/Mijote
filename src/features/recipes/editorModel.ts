@@ -2,6 +2,7 @@ import type { Category, Difficulty, ImportedRecipe, IngredientData, Recipe } fro
 import { parseIngredientLine } from '@/import/ingredientParser';
 import { guessCategoryFromTitle } from '@/import/category';
 import { newId } from '@/lib/id';
+import { normalizeSourceUrl } from '@/lib/url';
 import type { Lang } from '@/i18n';
 import { formatIngredientLine } from './format';
 
@@ -116,7 +117,7 @@ export function recipeFromState(s: EditState, base: Recipe | null): Recipe {
       .split(/[,;#]/)
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean),
-    sourceUrl: s.sourceUrl.trim() || null,
+    sourceUrl: normalizeSourceUrl(s.sourceUrl),
     notes: s.notes.trim(),
     rating: base?.rating ?? 0,
     favorite: base?.favorite ?? false,

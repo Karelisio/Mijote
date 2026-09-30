@@ -6,15 +6,12 @@ async function loadSettings(get: () => Promise<{ value: string | null }>) {
   vi.doMock('@capacitor/preferences', () => ({
     Preferences: { get, set: () => Promise.resolve(), remove: () => Promise.resolve() },
   }));
-  // The palette module pulls material-color-utilities, which Node cannot import directly.
-  vi.doMock('@/theme/palette', () => ({ DEFAULT_SEED: '#B5562A' }));
   return import('@/store/settings');
 }
 
 describe('settingsHydrated', () => {
   afterEach(() => {
     vi.doUnmock('@capacitor/preferences');
-    vi.doUnmock('@/theme/palette');
     vi.restoreAllMocks();
   });
 

@@ -32,6 +32,16 @@ interface GithubAsset {
   size?: unknown;
 }
 
+/** Release assets are downloaded from github.com only (the native side enforces it too). */
+export function isGithubDownloadUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.hostname.toLowerCase() === 'github.com';
+  } catch {
+    return false;
+  }
+}
+
 /** Extracts the APK release from a GitHub "latest release" API payload. */
 export function parseRelease(json: unknown): ReleaseInfo | null {
   if (typeof json !== 'object' || json === null) return null;
@@ -44,7 +54,7 @@ export function parseRelease(json: unknown): ReleaseInfo | null {
       typeof a.name === 'string' &&
       a.name.toLowerCase().endsWith('.apk') &&
       typeof a.browser_download_url === 'string' &&
-      a.browser_download_url.startsWith('https://'),
+      isGithubDownloadUrl(a.browser_download_url),
   );
   if (!apk) return null;
   return {

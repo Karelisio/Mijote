@@ -4,6 +4,7 @@ import type { MealPlanEntry, Recipe, ShoppingItem } from '@/db/types';
 import { getRecipe, saveRecipeTx } from '@/db/repos/recipes';
 import { listShopping } from '@/db/repos/shopping';
 import { getUserVersion } from '@/db/migrations';
+import { safeHttpUrl } from '@/lib/url';
 
 export const BACKUP_FORMAT = 1;
 
@@ -99,7 +100,10 @@ export function parseBackupData(raw: unknown): BackupData {
       throw new Error('invalid_recipe');
     }
   }
-  return raw as unknown as BackupData;
+  const data = raw as unknown as BackupData;
+  // Only http(s) sources: an archive must not bring a javascript: link into the app.
+  for (const r of data.recipes) r.sourceUrl = safeHttpUrl(r.sourceUrl);
+  return data;
 }
 
 /** Replaces the whole database content with the backup (single transaction). */

@@ -66,6 +66,15 @@ describe('backup', () => {
     expect(read.recipes[1]!.photo).toBeNull();
   });
 
+  it('drops source links that are not http(s)', async () => {
+    const data = await collectBackupData(await populatedDb());
+    data.recipes[0]!.sourceUrl = 'javascript:alert(1)';
+    data.recipes[1]!.sourceUrl = 'https://www.marmiton.org/x';
+    const parsed = parseBackupData(JSON.parse(JSON.stringify(data)));
+    expect(parsed.recipes[0]!.sourceUrl).toBeNull();
+    expect(parsed.recipes[1]!.sourceUrl).toBe('https://www.marmiton.org/x');
+  });
+
   it('validates foreign files', () => {
     expect(() => parseBackupData({ app: 'Other' })).toThrow();
     expect(() =>

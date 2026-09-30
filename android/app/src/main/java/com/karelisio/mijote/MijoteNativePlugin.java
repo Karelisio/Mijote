@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Locale;
 
 /**
  * Small native bridge for Mijote:
@@ -125,8 +126,8 @@ public class MijoteNativePlugin extends Plugin {
             call.reject("In-app updates are disabled in this build", "disabled");
             return;
         }
-        if (url == null || !url.startsWith("https://")) {
-            call.reject("A https url is required", "bad_url");
+        if (!isAllowedUpdateUrl(url, true)) {
+            call.reject("Only https GitHub release URLs are accepted", "bad_url");
             return;
         }
         if (!canInstall()) {
@@ -140,13 +141,7 @@ public class MijoteNativePlugin extends Plugin {
                 if (!dir.exists() && !dir.mkdirs()) throw new Exception("cannot create cache dir");
                 File apk = new File(dir, "mijote-update.apk");
 
-                connection = (HttpURLConnection) new URL(url).openConnection();
-                connection.setInstanceFollowRedirects(true);
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(30000);
-                connection.connect();
-                int code = connection.getResponseCode();
-                if (code < 200 || code > 299) throw new Exception("HTTP " + code);
+                connection = openGithubDownload(url);
 
                 long total = connection.getContentLengthLong();
                 long done = 0;
@@ -191,6 +186,63 @@ public class MijoteNativePlugin extends Plugin {
                 if (connection != null) connection.disconnect();
             }
         }).start();
+    }
+
+    private static final int MAX_REDIRECTS = 5;
+
+    /**
+     * Release APKs are downloaded from GitHub only: the request starts on github.com (or
+     * api.github.com) and may only be redirected to github.com or its download CDN
+     * (*.githubusercontent.com), over https.
+     */
+    static boolean isAllowedUpdateUrl(String address, boolean initial) {
+        if (address == null) return false;
+        try {
+            return isAllowedUpdateUrl(new URL(address), initial);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean isAllowedUpdateUrl(URL url, boolean initial) {
+        if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost() == null) return false;
+        String host = url.getHost().toLowerCase(Locale.ROOT);
+        if (host.equals("github.com")) return true;
+        if (initial) return host.equals("api.github.com");
+        return host.endsWith(".githubusercontent.com");
+    }
+
+    /** Opens the APK download, following redirects by hand so that every hop is checked. */
+    private static HttpURLConnection openGithubDownload(String address) throws Exception {
+        URL url = new URL(address);
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setRequestProperty("Accept", "application/octet-stream");
+            int code = connection.getResponseCode();
+            if (code >= 300 && code <= 399) {
+                String location = connection.getHeaderField("Location");
+                connection.disconnect();
+                if (location == null) throw new Exception("HTTP " + code + " without Location");
+                url = new URL(url, location);
+                if (!isAllowedUpdateUrl(url, false)) {
+                    throw new Exception("Redirected outside GitHub: " + url.getHost());
+                }
+                continue;
+            }
+            if (code < 200 || code > 299) {
+                connection.disconnect();
+                throw new Exception("HTTP " + code);
+            }
+            if (!isAllowedUpdateUrl(connection.getURL(), false)) {
+                connection.disconnect();
+                throw new Exception("Unexpected download host: " + connection.getURL().getHost());
+            }
+            return connection;
+        }
+        throw new Exception("Too many redirects");
     }
 
     private boolean canInstall() {
