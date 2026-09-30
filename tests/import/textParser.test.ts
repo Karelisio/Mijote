@@ -145,6 +145,139 @@ Cuire le potiron et l'oignon puis mixer.`;
   });
 });
 
+describe('parseRecipeText — metadata stays in the header', () => {
+  it('keeps cooking steps that mention a duration or a number of portions', () => {
+    const r = parseRecipeText(`Pâtes au beurre
+Serves 2
+Cook time: 12 minutes
+
+Ingredients
+200 g pasta
+Instructions
+Cook the pasta for 10 minutes.
+Cook for 5 min, stirring often.
+Cuisson : enfourner 30 min à 180°C.
+Couper le gâteau en 8 portions.`);
+    expect(r.servings).toBe(2);
+    expect(r.cookMinutes).toBe(12);
+    expect(r.steps).toEqual([
+      'Cook the pasta for 10 minutes.',
+      'Cook for 5 min, stirring often.',
+      'Cuisson : enfourner 30 min à 180°C.',
+      'Couper le gâteau en 8 portions.',
+    ]);
+  });
+
+  it('does not read metadata from steps, even without a header value', () => {
+    const r = parseRecipeText(`Gâteau
+Ingrédients
+3 œufs
+Préparation
+Cook for 5 min, stirring often.
+Temps de cuisson : 30 min
+Couper le gâteau en 8 portions.`);
+    expect(r.servings).toBeNull();
+    expect(r.cookMinutes).toBeNull();
+    expect(r.steps).toHaveLength(3);
+  });
+
+  it('never overwrites a value found first', () => {
+    const r = parseRecipeText(`Tarte
+Pour 6 personnes
+Cuisson : 45 min
+Temps de cuisson : 50 min
+Portions : 8
+Ingrédients
+4 pommes`);
+    expect(r.servings).toBe(6);
+    expect(r.cookMinutes).toBe(45);
+  });
+
+  it('reads the usual header forms before the first ingredient when there is no heading', () => {
+    const r = parseRecipeText(`Salade de tomates
+Pour 4 à 6 personnes
+Temps de préparation : 15 minutes
+Cuisson : 1 h 10
+2 tomates
+1 oignon rouge
+Prep time: 40 min`);
+    expect(r.servings).toBe(4);
+    expect(r.prepMinutes).toBe(15);
+    expect(r.cookMinutes).toBe(70);
+    // After the first ingredient, a metadata-looking line is ordinary text.
+    expect(r.steps).toEqual(['Prep time: 40 min']);
+  });
+
+  it('reads the number of servings that opens the ingredients list', () => {
+    const r = parseRecipeText(`Crêpes
+Ingrédients
+Pour 4 personnes
+250 g de farine
+Préparation
+Couper en 8 portions.`);
+    expect(r.servings).toBe(4);
+    expect(r.sections).toEqual([{ name: '', lines: ['250 g de farine'] }]);
+    expect(r.steps).toEqual(['Couper en 8 portions.']);
+  });
+
+  it('only takes a pure duration after the label', () => {
+    const r = parseRecipeText(`Pain
+Préparation : 20 min + 1 h de repos
+Cuisson : 35 minutes environ
+Ingrédients
+500 g de farine`);
+    expect(r.prepMinutes).toBeNull();
+    expect(r.cookMinutes).toBe(35);
+  });
+});
+
+describe('parseRecipeText — ingredient sub-sections', () => {
+  it('keeps short ingredient lines without a quantity as ingredients', () => {
+    const r = parseRecipeText(`Quiche
+Ingrédients
+3 œufs
+Sel et poivre
+20 cl de crème
+Huile d olive
+1 oignon
+Étapes
+Mélanger.`);
+    expect(r.sections).toEqual([
+      { name: '', lines: ['3 œufs', 'Sel et poivre', '20 cl de crème', 'Huile d olive', '1 oignon'] },
+    ]);
+  });
+
+  it('starts a sub-section on "…:" or "Pour la/le/les …" lines', () => {
+    const r = parseRecipeText(`Tarte
+Ingrédients
+Pour la pâte
+250 g de farine
+Garniture :
+4 pommes
+Pour l'assemblage
+1 jaune d'œuf
+Préparation
+Cuire.`);
+    expect(r.sections).toEqual([
+      { name: 'Pâte', lines: ['250 g de farine'] },
+      { name: 'Garniture', lines: ['4 pommes'] },
+      { name: 'Assemblage', lines: ["1 jaune d'œuf"] },
+    ]);
+  });
+});
+
+describe('parseRecipeText — numbered steps without headings', () => {
+  it('classifies "1. …" lines as steps, not ingredients', () => {
+    const r = parseRecipeText(`Salade
+2 tomates
+1,5 kg de pommes de terre
+1. Mélanger les tomates.
+2) Servir frais.`);
+    expect(r.sections).toEqual([{ name: '', lines: ['2 tomates', '1,5 kg de pommes de terre'] }]);
+    expect(r.steps).toEqual(['Mélanger les tomates.', 'Servir frais.']);
+  });
+});
+
 describe('guessCategoryFromTitle', () => {
   it('guesses common dishes', async () => {
     const { guessCategoryFromTitle } = await import('@/import/category');

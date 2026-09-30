@@ -10,20 +10,29 @@ const HEADING_STEPS =
 const HEADING_NOTES = /^(?:notes?|astuces?|conseils?|tips?)\s*:?\s*$/i;
 
 const STEP_PREFIX_RE = /^(?:[-•*]\s+|\d+[.)]\s*|[ée]tape\s*\d+\s*[:.)]?\s*|step\s*\d+\s*[:.)]?\s*)/i;
+/** "1. Mélanger…", "2) Cuire…": a numbered step, never an ingredient. */
+const NUMBERED_STEP_RE = /^\d+[.)]\s/;
 
 const UNICODE_FRACTION_CHARS = '½¼¾⅓⅔⅛';
 const INGREDIENT_START_RE = new RegExp(`^(?:[-•*]|\\d|[${UNICODE_FRACTION_CHARS}])`);
 
+// Metadata lines are only read in explicit forms ("Pour 6 personnes", "Portions : 6",
+// "Préparation : 20 min", "Cook time: 15 minutes"): a step like "Cook the pasta for 10 minutes."
+// or "Couper le gâteau en 8 portions." must stay a step.
+const SERVING_WORDS = String.raw`(?:personnes?|pers\.?|parts?|portions?|convives?|servings?|people)`;
 const SERVINGS_RES = [
-  /pour\s+(\d+)\s*personnes?/i,
-  /serves\s+(\d+)/i,
-  /portions?\s*:\s*(\d+)/i,
-  /personnes?\s*:\s*(\d+)/i,
-  /(\d+)\s*portions?\b/i,
+  new RegExp(String.raw`^pour\s+(\d+)(?:\s*(?:à|a|-|–|ou)\s*\d+)?\s*${SERVING_WORDS}(?![a-z])`, 'i'),
+  /^serves\s+(\d+)\b/i,
+  /^(?:nombre\s+de\s+)?(?:personnes?|portions?|parts?|servings?|yield|rendement|pour)\s*:\s*(\d+)/i,
+  new RegExp(String.raw`^(\d+)\s*${SERVING_WORDS}\s*$`, 'i'),
 ];
 
-const PREP_LABEL_RE = /^(?:pr[ée]paration|prep(?:\s*time)?)\s*:?\s*(.*)$/i;
-const COOK_LABEL_RE = /^(?:cuisson|cook(?:ing)?(?:\s*time)?)\s*:?\s*(.*)$/i;
+const PREP_LABEL_RE = /^(?:(?:temps\s+de\s+)?pr[ée]paration\s*:|prep(?:aration)?\s*(?:time\s*:?|:))\s*(.*)$/i;
+const COOK_LABEL_RE = /^(?:(?:temps\s+de\s+)?cuisson\s*:|cook(?:ing)?\s*(?:time\s*:?|:))\s*(.*)$/i;
+/** Words allowed around the numbers of a metadata duration ("1 h 30", "env. 45 min"). */
+const DURATION_WORDS = new Set(
+  'h heure heures hour hours hr hrs min mins minute minutes mn et and environ env about approx'.split(' '),
+);
 
 const MAX_METADATA_LINE_LENGTH = 60;
 
@@ -39,12 +48,18 @@ function matchDurationLabel(line: string, labelRe: RegExp): number | null {
   const m = labelRe.exec(line);
   if (!m) return null;
   const remainder = (m[1] ?? '').trim();
-  if (!remainder) return null; // bare heading ("Préparation" / "Préparation :") — not metadata
+  // Only a duration: "Cuisson : enfourner 30 min à 180°C." is a step, not metadata.
+  const words = remainder
+    .toLowerCase()
+    .replace(/\d+(?:[.,]\d+)?/g, ' ')
+    .split(/[\s.,;:()~+]+/)
+    .filter(Boolean);
+  if (!/\d/.test(remainder) || !words.every((w) => DURATION_WORDS.has(w))) return null;
   return parseHumanDuration(remainder);
 }
 
 function looksLikeIngredientStart(s: string): boolean {
-  return INGREDIENT_START_RE.test(s);
+  return INGREDIENT_START_RE.test(s) && !NUMBERED_STEP_RE.test(s);
 }
 
 function isHeading(t: string): boolean {
@@ -53,24 +68,27 @@ function isHeading(t: string): boolean {
 
 function cleanSectionName(line: string): string {
   let s = line.trim().replace(/:$/, '').trim();
-  s = s.replace(/^pour\s+(?:la|le|les)\s+/i, '').replace(/^for\s+the\s+/i, '');
+  s = s
+    .replace(/^pour\s+(?:la|le|les)\s+/i, '')
+    .replace(/^pour\s+l['’]\s*/i, '')
+    .replace(/^for\s+the\s+/i, '');
   s = s.trim();
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Detects a sub-section header inside the ingredients block ("Pour la pâte :" or "Pâte" alone). */
-function matchSubsectionHeader(line: string, nextLine: string | undefined): string | null {
+/**
+ * Sub-section header inside the ingredients block: "Garniture :" or "Pour la pâte". A short
+ * line without these marks is an ingredient ("Sel et poivre", "Huile d'olive").
+ */
+function matchSubsectionHeader(line: string): string | null {
   if (looksLikeIngredientStart(line)) return null;
-
-  if (/:$/.test(line) && line.length <= 50) {
-    return cleanSectionName(line);
+  if (
+    (/:$/.test(line) && line.length <= 50) ||
+    /^(?:pour\s+(?:la|le|les|l['’])|for\s+the)\s*\S/i.test(line)
+  ) {
+    return cleanSectionName(line) || null;
   }
-
-  if (line.length <= 30 && nextLine !== undefined && looksLikeIngredientStart(nextLine.trim())) {
-    return cleanSectionName(line);
-  }
-
   return null;
 }
 
@@ -103,28 +121,37 @@ export function parseRecipeText(text: string): ImportedRecipe {
     lines.push(raw);
   }
 
-  // 2. Metadata lines (servings / prep / cook) — matched and removed so they never end up as steps.
+  // 2. Metadata lines (servings / prep / cook), matched and removed. Only in the header — before
+  // the first heading, ingredient or numbered step — and a value found first is never replaced.
   let servings: number | null = null;
   let prepMinutes: number | null = null;
   let cookMinutes: number | null = null;
   const keptLines: string[] = [];
+  let inHeader = true;
   for (const raw of lines) {
     const t = raw.trim();
-    if (t && t.length <= MAX_METADATA_LINE_LENGTH) {
-      const s = matchServings(t);
-      if (s !== null) {
-        servings = s;
-        continue;
-      }
-      const p = matchDurationLabel(t, PREP_LABEL_RE);
-      if (p !== null) {
-        prepMinutes = p;
-        continue;
-      }
-      const c = matchDurationLabel(t, COOK_LABEL_RE);
-      if (c !== null) {
-        cookMinutes = c;
-        continue;
+    if (inHeader && t) {
+      if (isHeading(t)) {
+        inHeader = false;
+      } else {
+        if (t.length <= MAX_METADATA_LINE_LENGTH) {
+          const s: number | null = servings === null ? matchServings(t) : null;
+          if (s !== null) {
+            servings = s;
+            continue;
+          }
+          const p: number | null = prepMinutes === null ? matchDurationLabel(t, PREP_LABEL_RE) : null;
+          if (p !== null) {
+            prepMinutes = p;
+            continue;
+          }
+          const c: number | null = cookMinutes === null ? matchDurationLabel(t, COOK_LABEL_RE) : null;
+          if (c !== null) {
+            cookMinutes = c;
+            continue;
+          }
+        }
+        if (looksLikeIngredientStart(t) || NUMBERED_STEP_RE.test(t)) inHeader = false;
       }
     }
     keptLines.push(raw);
@@ -175,7 +202,13 @@ export function parseRecipeText(text: string): ImportedRecipe {
       }
 
       if (mode === 'ingredients') {
-        const sub = matchSubsectionHeader(t, lines[i + 1]);
+        // "Pour 6 personnes" often opens the ingredients list.
+        const n = servings === null ? matchServings(t) : null;
+        if (n !== null) {
+          servings = n;
+          continue;
+        }
+        const sub = matchSubsectionHeader(t);
         if (sub !== null) {
           currentSectionName = sub;
           continue;
@@ -188,7 +221,7 @@ export function parseRecipeText(text: string): ImportedRecipe {
       }
     }
   } else {
-    // No headings anywhere: classify by shape.
+    // No headings anywhere: classify by shape (a numbered "1. …" line is a step).
     const ingredientLines: string[] = [];
     for (const raw of lines) {
       const t = raw.trim();
