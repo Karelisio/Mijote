@@ -11,9 +11,12 @@ const UNICODE_FRACTIONS: Record<string, number> = {
 };
 const UNICODE_FRACTION_CHARS = '½¼¾⅓⅔⅛';
 
-const MIXED_RE = /^(\d+)\s+(\d+)\/(\d+)/;
-const GLUED_UNICODE_RE = new RegExp(`^(\\d+)([${UNICODE_FRACTION_CHARS}])`);
-const FRACTION_RE = /^(\d+)\/(\d+)/;
+// Fractions are written with "/" or the fraction slash U+2044 ("1⁄2").
+// Mixed number "1 1/2", or hyphenated "1-1/2" (a range like "1-2" has no fraction after the dash).
+const MIXED_RE = /^(\d+)(?:\s+|-)(\d+)[/\u2044](\d+)/;
+// Whole number and unicode fraction, glued or spaced: "1½", "1 ½" (as written by formatQuantity).
+const MIXED_UNICODE_RE = new RegExp(`^(\\d+)\\s*([${UNICODE_FRACTION_CHARS}])`);
+const FRACTION_RE = /^(\d+)[/\u2044](\d+)/;
 const UNICODE_ALONE_RE = new RegExp(`^([${UNICODE_FRACTION_CHARS}])`);
 const PLAIN_NUMBER_RE = /^(\d+(?:[.,]\d+)?)/;
 const RANGE_SEP_RE = /^\s*(?:à|a|to|-|–)\s*/i;
@@ -27,14 +30,20 @@ interface LeadingNumber {
   consumed: number;
 }
 
-/** Parses a leading quantity token: mixed fraction, glued/alone unicode fraction, simple fraction or decimal. */
+/**
+ * Parses a leading quantity token: mixed number ("1 1/2", "1-1/2", "1½", "1 ½"), unicode fraction
+ * alone, simple fraction or decimal.
+ */
 function parseLeadingNumber(str: string): LeadingNumber | null {
   let m = MIXED_RE.exec(str);
   if (m?.[1] && m[2] && m[3]) {
-    return { value: parseInt(m[1], 10) + parseInt(m[2], 10) / parseInt(m[3], 10), consumed: m[0].length };
+    const denom = parseInt(m[3], 10);
+    if (denom !== 0) {
+      return { value: parseInt(m[1], 10) + parseInt(m[2], 10) / denom, consumed: m[0].length };
+    }
   }
 
-  m = GLUED_UNICODE_RE.exec(str);
+  m = MIXED_UNICODE_RE.exec(str);
   if (m?.[1] && m[2]) {
     return { value: parseInt(m[1], 10) + (UNICODE_FRACTIONS[m[2]] ?? 0), consumed: m[0].length };
   }
