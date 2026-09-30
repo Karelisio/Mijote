@@ -14,7 +14,7 @@ interface ShoppingState {
   loaded: boolean;
   items: ShoppingItem[];
   load: () => Promise<void>;
-  /** Merges drafts into the list; returns how many lines were added or updated. */
+  /** Merges drafts into the list; returns how many lines were added or got a new quantity. */
   addDrafts: (drafts: ShoppingDraft[]) => Promise<number>;
   toggle: (id: Id) => Promise<void>;
   update: (item: ShoppingItem) => Promise<void>;
@@ -30,15 +30,20 @@ export const useShopping = create<ShoppingState>((set, get) => ({
     set({ items: await listShopping(await db()), loaded: true });
   },
   addDrafts: async (drafts) => {
-    const before = get().items;
-    const after = mergeShopping(before, drafts);
-    const changed = after.filter((a) => {
-      const b = before.find((x) => x.id === a.id);
+    const before = new Map(get().items.map((i) => [i.id, i]));
+    const after = mergeShopping(get().items, drafts);
+    const added = after.filter((a) => {
+      const b = before.get(a.id);
       return !b || b.quantity !== a.quantity || b.unit !== a.unit;
+    });
+    // A merge may only add a recipe title or a note: saved too, but not counted as added.
+    const changed = after.filter((a) => {
+      const b = before.get(a.id);
+      return !b || JSON.stringify(b) !== JSON.stringify(a);
     });
     set({ items: after });
     await upsertShoppingItems(await db(), changed);
-    return changed.length;
+    return added.length;
   },
   toggle: async (id) => {
     const item = get().items.find((i) => i.id === id);
