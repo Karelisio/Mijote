@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BottomSheet } from '@/ui/BottomSheet';
 import { Button } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
@@ -24,13 +24,20 @@ export function AddToPlanSheet({
 }) {
   const t = useT();
   const lang = useLang();
-  const today = new Date();
-  const days = Array.from({ length: 14 }, (_, i) => toISODate(addDays(today, i)));
+  // "Today" and the proposed meal are computed when the sheet opens (the page may have been open
+  // since yesterday).
+  const [today, setToday] = useState(() => new Date());
+  const days = useMemo(() => Array.from({ length: 14 }, (_, i) => toISODate(addDays(today, i))), [today]);
   const [date, setDate] = useState(days[0]!);
-  const [slot, setSlot] = useState<MealSlot>(new Date().getHours() < 14 ? 'lunch' : 'dinner');
+  const [slot, setSlot] = useState<MealSlot>(today.getHours() < 14 ? 'lunch' : 'dinner');
   const [n, setN] = useState(servings);
   useEffect(() => {
-    if (open) setN(servings);
+    if (!open) return;
+    const now = new Date();
+    setToday(now);
+    setDate(toISODate(now));
+    setSlot(now.getHours() < 14 ? 'lunch' : 'dinner');
+    setN(servings);
   }, [open, servings]);
 
   const label = (iso: string, i: number) =>

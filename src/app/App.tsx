@@ -15,6 +15,7 @@ import { RecipesPage } from '@/features/recipes/RecipesPage';
 import { RecipeDetailPage } from '@/features/recipes/RecipeDetailPage';
 import { usePendingImport } from '@/features/import/pendingImport';
 import { deepLinkToPath, takeLaunchPath } from './deepLink';
+import { guardExternalNavigation } from './navGuard';
 import { MagoDialogHost } from '@/features/mago/MagoDialogHost';
 import { UpdateDialogHost } from '@/features/update/UpdateDialogHost';
 
@@ -60,11 +61,12 @@ function useNativeIntegration() {
   useEffect(() => {
     if (!isNative()) return;
     void takeLaunchPath(() => CapApp.getLaunchUrl()).then((p) => {
-      if (p) navigateRef.current(p);
+      if (p) guardExternalNavigation(() => navigateRef.current(p));
     });
+    // The recipe editor asks before its unsaved changes are left behind.
     const h = CapApp.addListener('appUrlOpen', ({ url }) => {
       const p = deepLinkToPath(url);
-      if (p) navigateRef.current(p);
+      if (p) guardExternalNavigation(() => navigateRef.current(p));
     });
     return () => void h.then((x) => x.remove());
   }, []);
@@ -74,8 +76,10 @@ function useNativeIntegration() {
     if (!isNative()) return;
     const handle = (text?: string, subject?: string) => {
       if (!text) return;
-      setShared({ text, subject: subject ?? '' });
-      navigateRef.current('/import');
+      guardExternalNavigation(() => {
+        setShared({ text, subject: subject ?? '' });
+        navigateRef.current('/import');
+      });
     };
     void MijoteNative.consumePendingShare()
       .then((r) => handle(r.text, r.subject))

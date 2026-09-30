@@ -102,6 +102,11 @@ export default function CookingPage() {
       .then(setRecipe);
   }, [id]);
 
+  // Unknown recipe: leave (from an effect, never while rendering).
+  useEffect(() => {
+    if (recipe === null) navigate('/recipes', { replace: true });
+  }, [recipe, navigate]);
+
   const servings = Number(params.get('servings')) || recipe?.servings || 1;
   const factor = recipe && recipe.servings > 0 ? servings / recipe.servings : 1;
   const steps = useMemo(() => recipe?.steps ?? [], [recipe]);
@@ -128,10 +133,7 @@ export default function CookingPage() {
       </div>
     );
   }
-  if (!recipe) {
-    navigate('/recipes', { replace: true });
-    return null;
-  }
+  if (!recipe) return null;
 
   const toggleIngredient = (iid: string) =>
     setChecked((s) => {

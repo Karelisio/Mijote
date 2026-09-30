@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Screen } from '@/ui/Screen';
@@ -53,6 +53,8 @@ export function RecipeDetailPage() {
   const summary = summaries.find((s) => s.id === id);
   const [recipe, setRecipe] = useState<Recipe | null | undefined>(undefined);
   const [servings, setServings] = useState(4);
+  // Servings are set from the recipe once per recipe, not at every reload (favourite, cooked…).
+  const servingsFor = useRef<string | null>(null);
   const [collectionIds, setCollectionIds] = useState<Id[]>([]);
   const [planOpen, setPlanOpen] = useState(false);
   const [collectionsOpen, setCollectionsOpen] = useState(false);
@@ -66,7 +68,10 @@ export function RecipeDetailPage() {
       if (!alive) return;
       setRecipe(r);
       setCollectionIds(cols);
-      if (r) setServings(r.servings);
+      if (r && servingsFor.current !== r.id) {
+        servingsFor.current = r.id;
+        setServings(r.servings);
+      }
     })();
     return () => {
       alive = false;
