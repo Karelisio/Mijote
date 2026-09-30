@@ -262,6 +262,8 @@ export default function SettingsPage() {
         title={t('settings.magoList')}
         label={t('settings.magoList')}
         initial={s.magoListName}
+        supporting={t('settings.magoListHint')}
+        allowEmpty
         confirmLabel={t('common.save')}
         cancelLabel={t('common.cancel')}
         onClose={() => setMagoPrompt(false)}

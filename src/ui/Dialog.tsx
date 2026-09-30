@@ -104,6 +104,10 @@ interface PromptProps {
   title: string;
   label: string;
   initial?: string;
+  /** Helper text under the field. */
+  supporting?: string;
+  /** An empty value is a valid answer (e.g. clearing an optional setting). */
+  allowEmpty?: boolean;
   confirmLabel: string;
   cancelLabel: string;
   onSubmit: (value: string) => void;
@@ -115,8 +119,9 @@ export function PromptDialog(p: PromptProps) {
   useEffect(() => {
     if (p.open) setValue(p.initial ?? '');
   }, [p.open, p.initial]);
+  const canSubmit = p.allowEmpty || !!value.trim();
   const submit = () => {
-    if (!value.trim()) return;
+    if (!canSubmit) return;
     p.onClose();
     p.onSubmit(value.trim());
   };
@@ -130,7 +135,7 @@ export function PromptDialog(p: PromptProps) {
           <Button variant="text" onClick={p.onClose}>
             {p.cancelLabel}
           </Button>
-          <Button variant="text" onClick={submit} disabled={!value.trim()}>
+          <Button variant="text" onClick={submit} disabled={!canSubmit}>
             {p.confirmLabel}
           </Button>
         </>
@@ -142,7 +147,7 @@ export function PromptDialog(p: PromptProps) {
           submit();
         }}
       >
-        <TextField label={p.label} value={value} onChange={setValue} autoFocus />
+        <TextField label={p.label} value={value} onChange={setValue} supporting={p.supporting} autoFocus />
       </form>
     </Dialog>
   );
