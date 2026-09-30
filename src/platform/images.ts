@@ -80,19 +80,40 @@ export async function deleteImage(path: string): Promise<void> {
   await Filesystem.deleteFile({ path, directory: Directory.Data }).catch(() => undefined);
 }
 
-export async function listImages(): Promise<string[]> {
+export interface StoredImage {
+  path: string;
+  /** Last modification time in ms, 0 when unknown. */
+  mtime: number;
+}
+
+export async function listImages(): Promise<StoredImage[]> {
   try {
     const r = await Filesystem.readdir({ path: IMAGE_DIR, directory: Directory.Data });
-    return r.files.filter((f) => f.type === 'file').map((f) => `${IMAGE_DIR}/${f.name}`);
+    return r.files
+      .filter((f) => f.type === 'file')
+      .map((f) => ({ path: `${IMAGE_DIR}/${f.name}`, mtime: f.mtime ?? 0 }));
   } catch {
     return [];
   }
 }
 
-/** Deletes stored images no longer referenced by any recipe. */
-export async function collectOrphanImages(referenced: string[]): Promise<number> {
+/**
+ * Photos are written before their recipe is saved (import review, editor photo pick, backup
+ * restore), so a recent unreferenced file may still be about to be used.
+ */
+export const ORPHAN_GRACE_MS = 24 * 3600 * 1000;
+
+/** Images safe to delete: unreferenced and older than the grace period (unknown mtime: kept). */
+export function selectOrphanImages(images: StoredImage[], referenced: string[], now: number): string[] {
   const keep = new Set(referenced);
-  const orphans = (await listImages()).filter((p) => !keep.has(p));
+  return images
+    .filter((img) => !keep.has(img.path) && img.mtime > 0 && now - img.mtime > ORPHAN_GRACE_MS)
+    .map((img) => img.path);
+}
+
+/** Deletes stored images no longer referenced by any recipe (see `selectOrphanImages`). */
+export async function collectOrphanImages(referenced: string[]): Promise<number> {
+  const orphans = selectOrphanImages(await listImages(), referenced, Date.now());
   await Promise.all(orphans.map(deleteImage));
   return orphans.length;
 }

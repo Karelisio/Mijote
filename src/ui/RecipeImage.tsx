@@ -19,14 +19,17 @@ export function RecipeImage({
 }) {
   const url = useImageUrl(path);
   const [loaded, setLoaded] = useState(false);
+  // A file missing on disk fails to load: show the placeholder instead of an empty box.
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   return (
     <div className={`recipe-img${className ? ` ${className}` : ''}`}>
-      {path && url ? (
+      {path && url && url !== brokenUrl ? (
         <img
           src={url}
           alt={alt}
           draggable={false}
           onLoad={() => setLoaded(true)}
+          onError={() => setBrokenUrl(url)}
           className={loaded ? 'loaded' : ''}
         />
       ) : (
