@@ -124,15 +124,59 @@ export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
   };
 }
 
+/**
+ * The index stores normalizeText() output, like the queries built by buildFtsQuery: the
+ * unicode61 tokenizer removes accents but does not decompose ligatures, so raw "œufs" or
+ * "bœuf" would never match "oeufs" / "boeuf".
+ */
+async function insertFtsRow(
+  tx: Sql,
+  id: Id,
+  title: string,
+  ingredients: string[],
+  tags: string[],
+): Promise<void> {
+  await tx.run('INSERT INTO recipes_fts (recipe_id, title, ingredients, tags) VALUES (?, ?, ?, ?)', [
+    id,
+    normalizeText(title),
+    ingredients.map(normalizeText).join(' \n '),
+    normalizeText(tags.join(' ')),
+  ]);
+}
+
 async function writeFts(tx: Sql, r: Recipe): Promise<void> {
   if (!(await hasFts(tx))) return;
   await tx.run('DELETE FROM recipes_fts WHERE recipe_id = ?', [r.id]);
-  await tx.run('INSERT INTO recipes_fts (recipe_id, title, ingredients, tags) VALUES (?, ?, ?, ?)', [
+  await insertFtsRow(
+    tx,
     r.id,
     r.title,
-    r.sections.flatMap((s) => s.items.map((i) => i.name)).join(' \n '),
-    r.tags.join(' '),
-  ]);
+    r.sections.flatMap((s) => s.items.map((i) => i.name)),
+    r.tags,
+  );
+}
+
+/** Re-indexes every recipe (after a change of what the index stores). */
+export async function rebuildFtsIndex(tx: Sql): Promise<void> {
+  if (!(await hasFts(tx))) return;
+  const recipes = await tx.query<{ id: string; title: string }>('SELECT id, title FROM recipes');
+  const ingredients = await tx.query<{ recipe_id: string; name: string }>(
+    'SELECT recipe_id, name FROM ingredients ORDER BY recipe_id, position',
+  );
+  const tags = await tx.query<{ recipe_id: string; name: string }>(
+    'SELECT rt.recipe_id, t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id',
+  );
+  const group = (rows: { recipe_id: string; name: string }[]) => {
+    const m = new Map<string, string[]>();
+    for (const r of rows) m.set(r.recipe_id, [...(m.get(r.recipe_id) ?? []), r.name]);
+    return m;
+  };
+  const ingsBy = group(ingredients);
+  const tagsBy = group(tags);
+  await tx.run('DELETE FROM recipes_fts');
+  for (const r of recipes) {
+    await insertFtsRow(tx, r.id, r.title, ingsBy.get(r.id) ?? [], tagsBy.get(r.id) ?? []);
+  }
 }
 
 /** Inserts or fully replaces a recipe and its children. */

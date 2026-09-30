@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getUserVersion, LATEST_VERSION, migrate, MIGRATIONS, type Migration } from '@/db/migrations';
 import { getMeta } from '@/db/meta';
+import { searchRecipeIds } from '@/db/repos/recipes';
 import { memoryDb } from '../helpers/db';
 
 describe('migrations', () => {
@@ -77,6 +78,31 @@ describe('migrations', () => {
     await migrate(db, m);
     expect(await getMeta(db, 'fake')).toBe('0');
     expect(await getUserVersion(db)).toBe(2);
+  });
+
+  it('re-indexes recipes saved before the index stored normalized text', async () => {
+    const db = await memoryDb({ migrated: false });
+    await migrate(
+      db,
+      MIGRATIONS.filter((m) => m.version <= 2),
+    );
+    // What v1.0.x wrote: raw text, which unicode61 cannot match against "oeufs".
+    await db.run("INSERT INTO recipes (id, title, created_at, updated_at) VALUES ('r1', 'Bœuf', 1, 1)");
+    await db.run(
+      "INSERT INTO ingredients (id, recipe_id, position, name) VALUES ('i1', 'r1', 0, 'œufs'), ('i2', 'r1', 1, 'Crème')",
+    );
+    await db.run(
+      "INSERT INTO recipes_fts (recipe_id, title, ingredients, tags) VALUES ('r1', 'Bœuf', 'œufs \n Crème', '')",
+    );
+    expect(await searchRecipeIds(db, 'oeufs')).toEqual([]);
+
+    const res = await migrate(db);
+    expect(res.applied).toEqual([3]);
+    expect(await searchRecipeIds(db, 'oeufs')).toEqual(['r1']);
+    expect(await searchRecipeIds(db, 'boeuf')).toEqual(['r1']);
+    expect(await searchRecipeIds(db, 'creme')).toEqual(['r1']);
+    const rows = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM recipes_fts');
+    expect(Number(rows[0]!.n)).toBe(1);
   });
 
   it('refuses a database newer than the app', async () => {

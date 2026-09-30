@@ -47,6 +47,20 @@ describe('recipes repository', () => {
     expect(await searchRecipeIds(db, 'farine lardons')).toEqual([idOf('Quiche')]);
   });
 
+  it('matches ligatures both ways ("œufs" / "oeufs", "bœuf" / "boeuf")', async () => {
+    const db = await memoryDb();
+    const [crepes, quiche] = sampleRecipes('fr');
+    await saveRecipe(db, { ...crepes!, title: 'Bœuf bourguignon', tags: ['Cœur de bœuf'] });
+    await saveRecipe(db, quiche!); // "œufs" in its ingredients
+    const [beef, qid] = [crepes!.id, quiche!.id];
+    expect(await searchRecipeIds(db, 'boeuf')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'bœuf')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'BŒUF bourgui')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'coeur')).toEqual([beef]);
+    expect((await searchRecipeIds(db, 'œufs')).sort()).toEqual([beef, qid].sort());
+    expect((await searchRecipeIds(db, 'oeuf')).sort()).toEqual([beef, qid].sort());
+  });
+
   it('deletes a recipe and its index entry', async () => {
     const db = await memoryDb();
     await seedSampleRecipes(db, 'fr');
