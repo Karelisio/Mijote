@@ -6,14 +6,13 @@ interface Props {
   label: string;
   extended?: boolean;
   onClick: () => void;
-  noNav?: boolean;
 }
 
-export function Fab({ icon, label, extended = true, onClick, noNav }: Props) {
+export function Fab({ icon, label, extended = true, onClick }: Props) {
   return (
     <motion.button
       type="button"
-      className={`fab ripple${noNav ? ' no-nav' : ''}`}
+      className="fab ripple"
       onClick={onClick}
       aria-label={label}
       layout

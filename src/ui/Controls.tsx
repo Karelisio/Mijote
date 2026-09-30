@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Icon, type IconName } from './Icon';
 import { IconButton } from './Button';
+import { useT } from '@/i18n';
 
 export function Switch({
   checked,
@@ -115,15 +116,16 @@ export function Stepper({
   onChange: (v: number) => void;
   min?: number;
   max?: number;
-  labelMinus: string;
-  labelPlus: string;
+  labelMinus?: string;
+  labelPlus?: string;
   format?: (v: number) => ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="stepper">
       <IconButton
         icon="remove"
-        label={labelMinus}
+        label={labelMinus ?? t('common.decrease')}
         small
         onClick={() => onChange(Math.max(min, value - 1))}
         disabled={value <= min}
@@ -138,7 +140,7 @@ export function Stepper({
       </motion.span>
       <IconButton
         icon="add"
-        label={labelPlus}
+        label={labelPlus ?? t('common.increase')}
         small
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
@@ -158,13 +160,40 @@ export function RatingStars({
   size?: number;
   label: string;
 }) {
+  const stars = useRef<(HTMLButtonElement | null)[]>([]);
+  // Radio group: one tab stop (the rating, or the first star), arrows change the rating.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!onChange) return;
+    const delta =
+      e.key === 'ArrowRight' || e.key === 'ArrowUp'
+        ? 1
+        : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
+          ? -1
+          : 0;
+    if (!delta) return;
+    e.preventDefault();
+    const next = Math.min(5, Math.max(1, value + delta));
+    onChange(next);
+    stars.current[next - 1]?.focus();
+  };
   return (
-    <div className="stars" role={onChange ? 'radiogroup' : 'img'} aria-label={`${label} ${value}/5`}>
+    <div
+      className="stars"
+      role={onChange ? 'radiogroup' : 'img'}
+      aria-label={onChange ? label : `${label} ${value}/5`}
+      onKeyDown={onKeyDown}
+    >
       {[1, 2, 3, 4, 5].map((n) =>
         onChange ? (
           <motion.button
             key={n}
+            ref={(el: HTMLButtonElement | null) => {
+              stars.current[n - 1] = el;
+            }}
             type="button"
+            role="radio"
+            aria-checked={n === value}
+            tabIndex={n === Math.max(1, value) ? 0 : -1}
             whileTap={{ scale: 1.3 }}
             className={n <= value ? 'on' : ''}
             aria-label={`${n}/5`}

@@ -68,42 +68,45 @@ export async function listRecipeSummaries(db: Sql): Promise<RecipeSummary[]> {
   }));
 }
 
-export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
-  const [row] = await db.query<RecipeRow>('SELECT * FROM recipes WHERE id = ?', [id]);
-  if (!row) return null;
-  const [sections, ingredients, steps, tags] = await Promise.all([
-    db.query<{ id: string; name: string }>(
-      'SELECT id, name FROM ingredient_sections WHERE recipe_id = ? ORDER BY position',
-      [id],
-    ),
-    db.query<{
-      id: string;
-      section_id: string | null;
-      quantity: number | null;
-      quantity_max: number | null;
-      unit: string;
-      name: string;
-      note: string;
-    }>(
-      `SELECT id, section_id, quantity, quantity_max, unit, name, note
-       FROM ingredients WHERE recipe_id = ? ORDER BY position`,
-      [id],
-    ),
-    db.query<{ id: string; text: string }>(
-      'SELECT id, text FROM steps WHERE recipe_id = ? ORDER BY position',
-      [id],
-    ),
-    db.query<{ name: string }>(
-      'SELECT t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_id = ? ORDER BY t.name',
-      [id],
-    ),
-  ]);
+interface SectionRow {
+  id: string;
+  recipe_id: string;
+  name: string;
+}
+interface IngredientRow {
+  id: string;
+  recipe_id: string;
+  section_id: string | null;
+  quantity: number | null;
+  quantity_max: number | null;
+  unit: string;
+  name: string;
+  note: string;
+}
+interface StepRow {
+  id: string;
+  recipe_id: string;
+  text: string;
+}
+interface TagRow {
+  recipe_id: string;
+  name: string;
+}
+
+/** Builds a recipe from its rows (children in position order). */
+function assembleRecipe(
+  row: RecipeRow,
+  sections: SectionRow[],
+  ingredients: IngredientRow[],
+  steps: StepRow[],
+  tags: TagRow[],
+): Recipe {
   const secs = sections.map((s) => ({
     id: s.id,
     name: s.name,
     items: [] as Recipe['sections'][number]['items'],
   }));
-  if (secs.length === 0) secs.push({ id: `${id}-default`, name: '', items: [] });
+  if (secs.length === 0) secs.push({ id: `${row.id}-default`, name: '', items: [] });
   const byId = new Map(secs.map((s) => [s.id, s]));
   for (const i of ingredients) {
     const target = (i.section_id && byId.get(i.section_id)) || secs[0]!;
@@ -124,15 +127,108 @@ export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
   };
 }
 
+const CHILD_QUERIES = {
+  sections: 'SELECT id, recipe_id, name FROM ingredient_sections',
+  ingredients: 'SELECT id, recipe_id, section_id, quantity, quantity_max, unit, name, note FROM ingredients',
+  steps: 'SELECT id, recipe_id, text FROM steps',
+  tags: 'SELECT rt.recipe_id, t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id',
+};
+
+export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
+  const [row] = await db.query<RecipeRow>('SELECT * FROM recipes WHERE id = ?', [id]);
+  if (!row) return null;
+  const [sections, ingredients, steps, tags] = await Promise.all([
+    db.query<SectionRow>(`${CHILD_QUERIES.sections} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<IngredientRow>(`${CHILD_QUERIES.ingredients} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<StepRow>(`${CHILD_QUERIES.steps} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<TagRow>(`${CHILD_QUERIES.tags} WHERE rt.recipe_id = ? ORDER BY t.name`, [id]),
+  ]);
+  return assembleRecipe(row, sections, ingredients, steps, tags);
+}
+
+/** Every recipe with its children, oldest first, in five queries (backups). */
+export async function listFullRecipes(db: Sql): Promise<Recipe[]> {
+  const [rows, sections, ingredients, steps, tags] = await Promise.all([
+    db.query<RecipeRow>('SELECT * FROM recipes ORDER BY created_at'),
+    db.query<SectionRow>(`${CHILD_QUERIES.sections} ORDER BY recipe_id, position`),
+    db.query<IngredientRow>(`${CHILD_QUERIES.ingredients} ORDER BY recipe_id, position`),
+    db.query<StepRow>(`${CHILD_QUERIES.steps} ORDER BY recipe_id, position`),
+    db.query<TagRow>(`${CHILD_QUERIES.tags} ORDER BY rt.recipe_id, t.name`),
+  ]);
+  const group = <T extends { recipe_id: string }>(list: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of list) {
+      const arr = m.get(x.recipe_id);
+      if (arr) arr.push(x);
+      else m.set(x.recipe_id, [x]);
+    }
+    return m;
+  };
+  const [secBy, ingBy, stepBy, tagBy] = [group(sections), group(ingredients), group(steps), group(tags)];
+  return rows.map((r) =>
+    assembleRecipe(
+      r,
+      secBy.get(r.id) ?? [],
+      ingBy.get(r.id) ?? [],
+      stepBy.get(r.id) ?? [],
+      tagBy.get(r.id) ?? [],
+    ),
+  );
+}
+
+/**
+ * The index stores normalizeText() output, like the queries built by buildFtsQuery: the
+ * unicode61 tokenizer removes accents but does not decompose ligatures, so raw "œufs" or
+ * "bœuf" would never match "oeufs" / "boeuf".
+ */
+async function insertFtsRow(
+  tx: Sql,
+  id: Id,
+  title: string,
+  ingredients: string[],
+  tags: string[],
+): Promise<void> {
+  await tx.run('INSERT INTO recipes_fts (recipe_id, title, ingredients, tags) VALUES (?, ?, ?, ?)', [
+    id,
+    normalizeText(title),
+    ingredients.map(normalizeText).join(' \n '),
+    normalizeText(tags.join(' ')),
+  ]);
+}
+
 async function writeFts(tx: Sql, r: Recipe): Promise<void> {
   if (!(await hasFts(tx))) return;
   await tx.run('DELETE FROM recipes_fts WHERE recipe_id = ?', [r.id]);
-  await tx.run('INSERT INTO recipes_fts (recipe_id, title, ingredients, tags) VALUES (?, ?, ?, ?)', [
+  await insertFtsRow(
+    tx,
     r.id,
     r.title,
-    r.sections.flatMap((s) => s.items.map((i) => i.name)).join(' \n '),
-    r.tags.join(' '),
-  ]);
+    r.sections.flatMap((s) => s.items.map((i) => i.name)),
+    r.tags,
+  );
+}
+
+/** Re-indexes every recipe (after a change of what the index stores). */
+export async function rebuildFtsIndex(tx: Sql): Promise<void> {
+  if (!(await hasFts(tx))) return;
+  const recipes = await tx.query<{ id: string; title: string }>('SELECT id, title FROM recipes');
+  const ingredients = await tx.query<{ recipe_id: string; name: string }>(
+    'SELECT recipe_id, name FROM ingredients ORDER BY recipe_id, position',
+  );
+  const tags = await tx.query<{ recipe_id: string; name: string }>(
+    'SELECT rt.recipe_id, t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id',
+  );
+  const group = (rows: { recipe_id: string; name: string }[]) => {
+    const m = new Map<string, string[]>();
+    for (const r of rows) m.set(r.recipe_id, [...(m.get(r.recipe_id) ?? []), r.name]);
+    return m;
+  };
+  const ingsBy = group(ingredients);
+  const tagsBy = group(tags);
+  await tx.run('DELETE FROM recipes_fts');
+  for (const r of recipes) {
+    await insertFtsRow(tx, r.id, r.title, ingsBy.get(r.id) ?? [], tagsBy.get(r.id) ?? []);
+  }
 }
 
 /** Inserts or fully replaces a recipe and its children. */
@@ -282,11 +378,6 @@ export async function searchRecipeIds(db: Sql, input: string): Promise<Id[]> {
   const params = tokens.flatMap((t) => [`%${t}%`, `%${t}%`, `%${t}%`]);
   const rows = await db.query<{ id: string }>(`SELECT r.id FROM recipes r WHERE ${where}`, params);
   return rows.map((r) => r.id);
-}
-
-export async function listAllTags(db: Sql): Promise<string[]> {
-  const rows = await db.query<{ name: string }>('SELECT name FROM tags ORDER BY name');
-  return rows.map((r) => r.name);
 }
 
 export async function listPhotoPaths(db: Sql): Promise<string[]> {

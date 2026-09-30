@@ -5,6 +5,8 @@ import { Haptics } from '@capacitor/haptics';
 import { Preferences } from '@capacitor/preferences';
 import { isNative } from '@/platform/native';
 import { t } from '@/i18n';
+import { snackbar } from '@/store/snackbar';
+import { canScheduleExactAlarms } from './exactAlarm';
 
 export interface Timer {
   id: number;
@@ -31,13 +33,21 @@ interface TimersState {
 
 export const TIMER_CHANNEL = 'timers';
 let channelReady = false;
+let deniedNoticeShown = false;
 
 async function ensureChannel(): Promise<boolean> {
   if (!isNative()) return false;
   try {
     let perm = await LocalNotifications.checkPermissions();
     if (perm.display !== 'granted') perm = await LocalNotifications.requestPermissions();
-    if (perm.display !== 'granted') return false;
+    if (perm.display !== 'granted') {
+      // Timers still ring while Mijote is open: say once that they will not in the background.
+      if (!deniedNoticeShown) {
+        deniedNoticeShown = true;
+        snackbar(t('cooking.notificationsDenied'), { duration: 6000 });
+      }
+      return false;
+    }
     if (!channelReady) {
       await LocalNotifications.createChannel({
         id: TIMER_CHANNEL,
@@ -56,6 +66,9 @@ async function ensureChannel(): Promise<boolean> {
 
 async function schedule(timer: Timer): Promise<void> {
   if (!timer.endAt || !(await ensureChannel())) return;
+  // Exact only when already allowed: otherwise the plugin would open the system "Alarms &
+  // reminders" screen on every start/resume/+1 — the cooking screen offers "Allow" instead.
+  const exact = await canScheduleExactAlarms();
   await LocalNotifications.schedule({
     notifications: [
       {
@@ -66,6 +79,7 @@ async function schedule(timer: Timer): Promise<void> {
           (timer.recipeTitle ? ` · ${timer.recipeTitle}` : ''),
         channelId: TIMER_CHANNEL,
         schedule: { at: new Date(timer.endAt), allowWhileIdle: true },
+        isExactNotification: exact,
         smallIcon: 'ic_stat_mijote',
         autoCancel: true,
         extra: { recipeId: timer.recipeId },
@@ -152,6 +166,15 @@ export const useTimers = create<TimersState>()(
     },
   ),
 );
+
+/** Schedules the running timers again, e.g. as exact alarms once that access is granted. */
+export async function rescheduleRunningTimers(): Promise<void> {
+  for (const tm of useTimers.getState().timers) {
+    if (!tm.endAt || tm.done || tm.endAt <= Date.now()) continue;
+    await cancel(tm.id);
+    await schedule(tm);
+  }
+}
 
 export function remainingMs(x: Timer, now = Date.now()): number {
   return x.endAt ? Math.max(0, x.endAt - now) : x.remainingMs;

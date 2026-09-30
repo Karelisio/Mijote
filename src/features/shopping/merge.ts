@@ -12,7 +12,9 @@ export interface ShoppingDraft {
   recipeTitle?: string;
 }
 
-const LEADING = /^(?:(?:de|d'|d’|du|des|la|le|les|l'|l’|un|une|of|the|a|some)\s*)+/;
+// Whole words only ("lait", "ail", "dessert" are not "la it", "a il", "de ssert"), longest
+// alternatives first. No English "the": it would eat the French "thé" ("thé vert" → "vert").
+const LEADING = /^(?:(?:des|de|du|les|la|le|une|un|some|of|a)\s+|[dl]['’]\s*)+/;
 
 /** Canonical key for duplicate detection: accent-free, singular, no article. */
 export function itemKey(name: string): string {

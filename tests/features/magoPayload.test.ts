@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildMagoPayload,
-  buildMagoUrl,
-  decodeBase64Url,
-  encodeBase64Url,
-  parseMagoUrl,
-} from '@/features/mago/payload';
+import { buildMagoPayload, buildMagoUrl, decodeBase64Url, encodeBase64Url } from '@/features/mago/payload';
 
 describe('base64url', () => {
   it('round-trips UTF-8 text without padding or unsafe chars', () => {
@@ -54,6 +48,7 @@ describe('buildMagoPayload', () => {
     const p = buildMagoPayload([{ name: 'Œufs', quantity: 6, unit: '' }], { lang: 'fr' });
     const url = buildMagoUrl(p);
     expect(url.startsWith('mago://import?data=')).toBe(true);
-    expect(parseMagoUrl(url)).toEqual(p);
+    const data = new URL(url).searchParams.get('data');
+    expect(JSON.parse(decodeBase64Url(data!))).toEqual(p);
   });
 });

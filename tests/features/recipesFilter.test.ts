@@ -101,4 +101,13 @@ describe('matchRecipes', () => {
   it('suggests frequent ingredients', () => {
     expect(frequentIngredients(all, 2)).toEqual(['beurre', 'farine']);
   });
+
+  it('keeps short names such as "ail" and "lait" in the suggestions', () => {
+    const recipes = [
+      R('aioli', { ingredientNames: ['ail', 'huile', 'lait'] }),
+      R('gratin', { ingredientNames: ['ail', 'lait', 'pommes de terre'] }),
+    ];
+    expect(frequentIngredients(recipes, 2)).toEqual(['ail', 'lait']);
+    expect(matchRecipes(recipes, ['lait'])).toHaveLength(2);
+  });
 });

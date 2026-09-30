@@ -1,5 +1,5 @@
 import type { ImportedRecipe } from '@/db/types';
-import { parseIsoDuration } from '../duration';
+import { parseDuration } from '../duration';
 import { mapCategory } from '../category';
 import { cleanText, normalizeTags, resolveUrl } from './util';
 
@@ -88,8 +88,8 @@ export function extractMicrodata(doc: Document, url: string): ImportedRecipe | n
 
   const prepEl = getProp(root, 'prepTime')[0];
   const cookEl = getProp(root, 'cookTime')[0];
-  const prepMinutes = prepEl ? parseIsoDuration(propValue(prepEl)) : null;
-  const cookMinutes = cookEl ? parseIsoDuration(propValue(cookEl)) : null;
+  const prepMinutes = prepEl ? parseDuration(propValue(prepEl)) : null;
+  const cookMinutes = cookEl ? parseDuration(propValue(cookEl)) : null;
 
   const ingredientEls = [...getProp(root, 'recipeIngredient'), ...getProp(root, 'ingredients')];
   const ingredientLines = ingredientEls.map((el) => propValue(el)).filter(Boolean);

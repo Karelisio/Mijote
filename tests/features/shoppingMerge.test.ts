@@ -9,6 +9,32 @@ describe('itemKey', () => {
     expect(itemKey("d'oignons")).toBe(itemKey('Oignon'));
     expect(itemKey('Poireaux')).toBe(itemKey('poireau'));
     expect(itemKey('farine (T55)')).toBe(itemKey('Farine'));
+    expect(itemKey('de la farine')).toBe('farine');
+    expect(itemKey("l’huile d'olive")).toBe('huile d olive');
+  });
+
+  it('only strips whole articles', () => {
+    expect(itemKey('lait')).toBe('lait');
+    expect(itemKey('ail')).toBe('ail');
+    expect(itemKey('dessert')).toBe('dessert');
+    expect(itemKey('lardons')).toBe('lardon');
+    expect(itemKey('levure')).toBe('levure');
+    expect(itemKey('thé')).toBe('the');
+    expect(itemKey('thé vert')).toBe('the vert');
+    expect(itemKey('des œufs')).toBe(itemKey('œufs'));
+    expect(itemKey('les pâtes')).toBe(itemKey('pâtes'));
+    expect(itemKey('une gousse')).toBe('gousse');
+  });
+
+  it('merges "des œufs" with "œufs"', () => {
+    const list = mergeDrafts([
+      { name: 'des œufs', quantity: 2, unit: '' },
+      { name: 'Œufs', quantity: 3, unit: '' },
+      { name: 'lait', quantity: 1, unit: 'l' },
+      { name: 'ail', quantity: 1, unit: 'clove' },
+    ]);
+    expect(list).toHaveLength(3);
+    expect(list[0]).toMatchObject({ name: 'des œufs', quantity: 5 });
   });
 });
 

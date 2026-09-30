@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteRecipe,
   getRecipe,
-  listAllTags,
+  listFullRecipes,
   listRecipeSummaries,
   markCooked,
   saveRecipe,
   searchRecipeIds,
 } from '@/db/repos/recipes';
-import { sampleRecipes, seedSampleRecipes } from '@/db/seed';
+import { sampleRecipes, seedOnFirstLaunch, seedSampleRecipes } from '@/db/seed';
+import { getMeta } from '@/db/meta';
 import { memoryDb } from '../helpers/db';
 
 describe('recipes repository', () => {
@@ -31,7 +32,8 @@ describe('recipes repository', () => {
     await saveRecipe(db, { ...crepes!, tags: ['dessert'], steps: crepes!.steps.slice(0, 1) });
     const loaded = await getRecipe(db, crepes!.id);
     expect(loaded?.steps).toHaveLength(1);
-    expect(await listAllTags(db)).toEqual(['dessert']);
+    const tags = await db.query<{ name: string }>('SELECT name FROM tags ORDER BY name');
+    expect(tags.map((t) => t.name)).toEqual(['dessert']);
   });
 
   it('searches titles, ingredients and tags ignoring accents', async () => {
@@ -45,6 +47,20 @@ describe('recipes repository', () => {
     expect(await searchRecipeIds(db, 'epice')).toEqual([idOf('Curry')]);
     expect((await searchRecipeIds(db, 'farine')).sort()).toEqual([idOf('Crêpes'), idOf('Quiche')].sort());
     expect(await searchRecipeIds(db, 'farine lardons')).toEqual([idOf('Quiche')]);
+  });
+
+  it('matches ligatures both ways ("œufs" / "oeufs", "bœuf" / "boeuf")', async () => {
+    const db = await memoryDb();
+    const [crepes, quiche] = sampleRecipes('fr');
+    await saveRecipe(db, { ...crepes!, title: 'Bœuf bourguignon', tags: ['Cœur de bœuf'] });
+    await saveRecipe(db, quiche!); // "œufs" in its ingredients
+    const [beef, qid] = [crepes!.id, quiche!.id];
+    expect(await searchRecipeIds(db, 'boeuf')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'bœuf')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'BŒUF bourgui')).toEqual([beef]);
+    expect(await searchRecipeIds(db, 'coeur')).toEqual([beef]);
+    expect((await searchRecipeIds(db, 'œufs')).sort()).toEqual([beef, qid].sort());
+    expect((await searchRecipeIds(db, 'oeuf')).sort()).toEqual([beef, qid].sort());
   });
 
   it('deletes a recipe and its index entry', async () => {
@@ -67,5 +83,31 @@ describe('recipes repository', () => {
     const loaded = await getRecipe(db, r!.id);
     expect(loaded?.cookedCount).toBe(2);
     expect(loaded?.lastCookedAt).toBe(43);
+  });
+
+  it('seeds the samples once, together with the "seeded" flag', async () => {
+    const db = await memoryDb();
+    expect(await seedOnFirstLaunch(db, 'fr')).toBe(true);
+    expect(await seedOnFirstLaunch(db, 'fr')).toBe(false);
+    expect(await listRecipeSummaries(db)).toHaveLength(3);
+    expect(await getMeta(db, 'seeded')).not.toBeNull();
+  });
+
+  it('leaves neither samples nor flag when seeding fails', async () => {
+    const db = await memoryDb();
+    await db.execute('DROP TABLE steps'); // the third write of every recipe now fails
+    await expect(seedOnFirstLaunch(db, 'fr')).rejects.toThrow();
+    const rows = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM recipes');
+    expect(Number(rows[0]!.n)).toBe(0);
+    expect(await getMeta(db, 'seeded')).toBeNull();
+  });
+
+  it('loads every full recipe in one pass, identical to getRecipe', async () => {
+    const db = await memoryDb();
+    await seedSampleRecipes(db, 'fr');
+    const all = await listFullRecipes(db);
+    expect(all).toHaveLength(3);
+    for (const r of all) expect(r).toEqual(await getRecipe(db, r.id));
+    expect(all.map((r) => r.createdAt)).toEqual([...all.map((r) => r.createdAt)].sort((a, b) => a - b));
   });
 });

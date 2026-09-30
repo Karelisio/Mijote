@@ -2,6 +2,7 @@ import type { Category, Difficulty, ImportedRecipe, IngredientData, Recipe } fro
 import { parseIngredientLine } from '@/import/ingredientParser';
 import { guessCategoryFromTitle } from '@/import/category';
 import { newId } from '@/lib/id';
+import { normalizeSourceUrl } from '@/lib/url';
 import type { Lang } from '@/i18n';
 import { formatIngredientLine } from './format';
 
@@ -116,7 +117,7 @@ export function recipeFromState(s: EditState, base: Recipe | null): Recipe {
       .split(/[,;#]/)
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean),
-    sourceUrl: s.sourceUrl.trim() || null,
+    sourceUrl: normalizeSourceUrl(s.sourceUrl),
     notes: s.notes.trim(),
     rating: base?.rating ?? 0,
     favorite: base?.favorite ?? false,
@@ -128,7 +129,14 @@ export function recipeFromState(s: EditState, base: Recipe | null): Recipe {
       .map((sec) => ({
         id: sec.id,
         name: sec.name.trim(),
-        items: sec.items.filter((i) => i.data.name.trim()).map((i) => ({ ...i.data, id: i.id })),
+        items: sec.items
+          .filter((i) => i.data.name.trim() || i.text.trim())
+          // A line the parser could not name (e.g. "250 g") is kept as typed rather than dropped.
+          .map((i) =>
+            i.data.name.trim()
+              ? { ...i.data, id: i.id }
+              : { quantity: null, quantityMax: null, unit: '', name: i.text.trim(), note: '', id: i.id },
+          ),
       }))
       .filter((sec, idx) => idx === 0 || sec.items.length > 0 || sec.name),
     steps: s.steps.filter((st) => st.text.trim()).map((st) => ({ id: st.id, text: st.text.trim() })),

@@ -1,4 +1,5 @@
 import type { Sql } from './driver';
+import { rebuildFtsIndex } from './repos/recipes';
 
 export interface Migration {
   version: number;
@@ -9,6 +10,8 @@ export interface Migration {
    * A failure is recorded in app_meta instead of aborting the migration.
    */
   optional?: { flag: string; statements: string[] };
+  /** Data step run after the statements, in the same transaction. */
+  run?: (tx: Sql) => Promise<void>;
 }
 
 export const MIGRATIONS: Migration[] = [
@@ -119,6 +122,13 @@ export const MIGRATIONS: Migration[] = [
       ],
     },
   },
+  {
+    // The index now stores normalized text ("œufs" → "oeufs"): re-index existing recipes.
+    version: 3,
+    name: 'fts_normalized_text',
+    statements: [],
+    run: rebuildFtsIndex,
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);
@@ -169,6 +179,7 @@ export async function migrate(
           ok ? '1' : '0',
         ]);
       }
+      if (m.run) await m.run(tx);
       await tx.execute(`PRAGMA user_version = ${m.version}`);
     });
     applied.push(m.version);

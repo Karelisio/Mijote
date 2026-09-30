@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ cloud backup: everything (recipes database, preferences, photos in files/images/)
+     except the local backup archives, which each hold every photo and would exceed the 25 MB
+     quota, after which Android stops backing up the app at all. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="backups" />
+    </cloud-backup>
+</data-extraction-rules>

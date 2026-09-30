@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Screen } from '@/ui/Screen';
 import { Button, IconButton } from '@/ui/Button';
@@ -28,10 +28,19 @@ const toDraft = (i: ShoppingItem) => ({
   recipeTitle: i.recipeTitles.join(', ') || undefined,
 });
 
-function ItemRow({ item, onEdit }: { item: ShoppingItem; onEdit: () => void }) {
+/** One row: re-renders only when its own item changes (actions are read through selectors). */
+const ItemRow = memo(function ItemRow({
+  item,
+  onEdit,
+}: {
+  item: ShoppingItem;
+  onEdit: (item: ShoppingItem) => void;
+}) {
   const lang = useLang();
   const t = useT();
-  const { toggle, remove, restore } = useShopping();
+  const toggle = useShopping((s) => s.toggle);
+  const remove = useShopping((s) => s.remove);
+  const restore = useShopping((s) => s.restore);
   const amount = formatAmount({ quantity: item.quantity, quantityMax: null, unit: item.unit }, lang);
   return (
     <SwipeToDelete
@@ -45,12 +54,8 @@ function ItemRow({ item, onEdit }: { item: ShoppingItem; onEdit: () => void }) {
         )
       }
     >
-      <div
-        className={`shop-item${item.checked ? ' checked' : ''}`}
-        onClick={() => void toggle(item.id)}
-        role="button"
-        tabIndex={0}
-      >
+      {/* Tapping the row is a shortcut; its checkbox and edit button are the accessible controls. */}
+      <div className={`shop-item${item.checked ? ' checked' : ''}`} onClick={() => void toggle(item.id)}>
         <Checkbox checked={item.checked} label={item.name} onChange={() => void toggle(item.id)} />
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="shop-item-name">
@@ -76,13 +81,13 @@ function ItemRow({ item, onEdit }: { item: ShoppingItem; onEdit: () => void }) {
           label={t('shopping.editItem')}
           onClick={(e) => {
             e.stopPropagation();
-            onEdit();
+            onEdit(item);
           }}
         />
       </div>
     </SwipeToDelete>
   );
-}
+});
 
 export default function ShoppingPage() {
   const t = useT();
@@ -220,7 +225,7 @@ export default function ShoppingPage() {
             </h3>
             <AnimatePresence initial={false}>
               {g.items.map((i) => (
-                <ItemRow key={i.id} item={i} onEdit={() => setEditing(i)} />
+                <ItemRow key={i.id} item={i} onEdit={setEditing} />
               ))}
             </AnimatePresence>
           </motion.section>
@@ -238,7 +243,7 @@ export default function ShoppingPage() {
             </h3>
             <AnimatePresence initial={false}>
               {checked.map((i) => (
-                <ItemRow key={i.id} item={i} onEdit={() => setEditing(i)} />
+                <ItemRow key={i.id} item={i} onEdit={setEditing} />
               ))}
             </AnimatePresence>
           </motion.section>

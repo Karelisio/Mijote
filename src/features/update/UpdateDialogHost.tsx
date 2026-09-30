@@ -2,15 +2,18 @@ import { useEffect } from 'react';
 import { Dialog } from '@/ui/Dialog';
 import { Button } from '@/ui/Button';
 import { LinearProgress } from '@/ui/Controls';
-import { useT } from '@/i18n';
-import { currentVersion, useUpdate } from './update';
+import { useLang, useT } from '@/i18n';
+import { formatMegabytes } from '@/features/recipes/format';
+import { useUpdate } from './update';
 
 /** "New version available" dialog, including the install-permission and download steps. */
 export function UpdateDialogHost() {
   const t = useT();
+  const lang = useLang();
   const {
     prompt,
     latest,
+    installed,
     status,
     progress,
     needsPermission,
@@ -25,7 +28,7 @@ export function UpdateDialogHost() {
   }, [init]);
 
   const downloading = status === 'downloading';
-  const sizeMb = latest?.apkSize ? ` · ${(latest.apkSize / 1024 / 1024).toFixed(1)} Mo` : '';
+  const sizeMb = latest?.apkSize ? ` · ${formatMegabytes(latest.apkSize, lang)}` : '';
 
   return (
     <Dialog
@@ -64,7 +67,7 @@ export function UpdateDialogHost() {
       ) : (
         <>
           <p style={{ margin: '0 0 8px' }}>
-            {t('update.availableBody', { current: currentVersion() })}
+            {t('update.availableBody', { current: installed })}
             {sizeMb}
           </p>
           {latest?.notes && <pre className="update-notes selectable">{latest.notes}</pre>}

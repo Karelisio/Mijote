@@ -196,7 +196,14 @@ export default function PlannerPage() {
                             <div
                               className="meal ripple"
                               role={r ? 'button' : undefined}
+                              tabIndex={r ? 0 : undefined}
                               onClick={() => r && navigate(`/recipes/${r.id}`)}
+                              onKeyDown={(e) => {
+                                if (r && (e.key === 'Enter' || e.key === ' ')) {
+                                  e.preventDefault();
+                                  navigate(`/recipes/${r.id}`);
+                                }
+                              }}
                             >
                               {r ? (
                                 <RecipeImage

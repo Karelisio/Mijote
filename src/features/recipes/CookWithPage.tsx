@@ -131,7 +131,7 @@ export default function CookWithPage() {
                     />
                   </div>
                   <div className="body-small muted ellipsis">
-                    {t('cookWith.matches', { have: m.have, total: m.total })} ·{' '}
+                    {t('cookWith.matches', { have: m.have, count: m.total })} ·{' '}
                     {m.missing.length
                       ? t('cookWith.missing', { list: m.missing.join(', ') })
                       : t('cookWith.nothingMissing')}

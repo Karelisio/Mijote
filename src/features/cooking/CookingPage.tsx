@@ -3,7 +3,6 @@ import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SystemBars } from '@capacitor/core';
 import { KeepAwake } from '@capacitor-community/keep-awake';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Button, IconButton } from '@/ui/Button';
 import { Checkbox, Spinner } from '@/ui/Controls';
@@ -22,8 +21,9 @@ import { formatAmount } from '@/features/recipes/format';
 import { scaleIngredient } from '@/features/recipes/portions';
 import { formatClock } from '@/features/recipes/timerDetect';
 import { markRecipeCooked } from '@/features/recipes/actions';
-import { remainingMs, useTimers, type Timer } from './timers';
+import { remainingMs, rescheduleRunningTimers, useTimers, type Timer } from './timers';
 import { useNow } from './useTimerTicker';
+import { useExactAlarmAccess } from './exactAlarm';
 
 function useImmersive(keepOn: boolean) {
   useEffect(() => {
@@ -37,21 +37,14 @@ function useImmersive(keepOn: boolean) {
   }, [keepOn]);
 }
 
-function useExactAlarmStatus(): [boolean, () => void] {
-  const [denied, setDenied] = useState(false);
-  useEffect(() => {
-    if (!isNative()) return;
-    void LocalNotifications.checkExactNotificationSetting()
-      .then((s) => setDenied(s.exact_alarm === 'denied'))
-      .catch(() => undefined);
-  }, []);
-  const ask = () => void LocalNotifications.changeExactNotificationSetting().catch(() => undefined);
-  return [denied, ask];
-}
-
-function TimerCard({ timer, now }: { timer: Timer; now: number }) {
+/** A running timer: it ticks by itself, so the rest of the cooking screen does not re-render. */
+function TimerCard({ timer }: { timer: Timer }) {
   const t = useT();
-  const { pause, resume, addTime, remove } = useTimers();
+  const pause = useTimers((s) => s.pause);
+  const resume = useTimers((s) => s.resume);
+  const addTime = useTimers((s) => s.addTime);
+  const remove = useTimers((s) => s.remove);
+  const now = useNow(250, !!timer.endAt && !timer.done);
   const rem = remainingMs(timer, now);
   const progress = timer.durationSec > 0 ? 1 - rem / (timer.durationSec * 1000) : 1;
   return (
@@ -73,11 +66,21 @@ function TimerCard({ timer, now }: { timer: Timer; now: number }) {
         </div>
         {!timer.done &&
           (timer.endAt ? (
-            <IconButton icon="pause" label="Pause" small onClick={() => pause(timer.id)} />
+            <IconButton icon="pause" label={t('cooking.pause')} small onClick={() => pause(timer.id)} />
           ) : (
-            <IconButton icon="play_arrow" label="Play" small onClick={() => resume(timer.id)} />
+            <IconButton
+              icon="play_arrow"
+              label={t('cooking.resume')}
+              small
+              onClick={() => resume(timer.id)}
+            />
           ))}
-        <button type="button" className="cook-timer-plus ripple" onClick={() => addTime(timer.id, 60)}>
+        <button
+          type="button"
+          className="cook-timer-plus ripple"
+          aria-label={t('cooking.addMinute')}
+          onClick={() => addTime(timer.id, 60)}
+        >
           +1
         </button>
         <IconButton icon="close" label={t('common.close')} small onClick={() => remove(timer.id)} />
@@ -102,8 +105,7 @@ export default function CookingPage() {
   const allTimers = useTimers((s) => s.timers);
   const startTimer = useTimers((s) => s.start);
   const timers = allTimers.filter((x) => x.recipeId === id);
-  const now = useNow(250, timers.length > 0);
-  const [exactDenied, askExact] = useExactAlarmStatus();
+  const exactAlarm = useExactAlarmAccess(() => void rescheduleRunningTimers());
 
   useImmersive(keepOn);
   useBackHandler(true, () => navigate(-1));
@@ -113,6 +115,11 @@ export default function CookingPage() {
       .then((d) => getRecipe(d, id))
       .then(setRecipe);
   }, [id]);
+
+  // Unknown recipe: leave (from an effect, never while rendering).
+  useEffect(() => {
+    if (recipe === null) navigate('/recipes', { replace: true });
+  }, [recipe, navigate]);
 
   const servings = Number(params.get('servings')) || recipe?.servings || 1;
   const factor = recipe && recipe.servings > 0 ? servings / recipe.servings : 1;
@@ -140,10 +147,7 @@ export default function CookingPage() {
       </div>
     );
   }
-  if (!recipe) {
-    navigate('/recipes', { replace: true });
-    return null;
-  }
+  if (!recipe) return null;
 
   const toggleIngredient = (iid: string) =>
     setChecked((s) => {
@@ -189,11 +193,11 @@ export default function CookingPage() {
         ))}
       </div>
 
-      {exactDenied && timers.length > 0 && (
+      {exactAlarm.denied && timers.length > 0 && (
         <div className="cook-hint">
           <Icon name="notifications" size={20} />
           <span className="grow">{t('cooking.exactAlarmHint')}</span>
-          <Button variant="text" onClick={askExact}>
+          <Button variant="text" onClick={exactAlarm.ask}>
             {t('cooking.allow')}
           </Button>
         </div>
@@ -265,7 +269,7 @@ export default function CookingPage() {
       <div className="cook-timers">
         <AnimatePresence>
           {timers.map((x) => (
-            <TimerCard key={x.id} timer={x} now={now} />
+            <TimerCard key={x.id} timer={x} />
           ))}
         </AnimatePresence>
       </div>
@@ -304,10 +308,9 @@ export default function CookingPage() {
               const on = checked.has(i.id);
               const amount = formatAmount(scaleIngredient(i, factor), lang);
               return (
+                // The row is a tap shortcut; the checkbox is the accessible control.
                 <div
                   key={i.id}
-                  role="button"
-                  tabIndex={0}
                   className={`cook-ing ripple${on ? ' on' : ''}`}
                   onClick={() => toggleIngredient(i.id)}
                 >

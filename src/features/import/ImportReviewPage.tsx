@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useT } from '@/i18n';
 import { fetchBinary } from '@/import';
@@ -17,6 +17,16 @@ export default function ImportReviewPage() {
   const setDraft = usePendingImport((s) => s.setDraft);
   const initial = useMemo(() => (draft ? stateFromImported(draft) : null), [draft]);
   const [ready, setReady] = useState<EditState | null>(null);
+  const saved = useRef(false);
+
+  // The draft is dropped once the page is gone: clearing it while still mounted would render the
+  // <Navigate to="/recipes"> below, which overrode the navigation to the saved recipe.
+  useEffect(
+    () => () => {
+      if (saved.current) setDraft(null);
+    },
+    [setDraft],
+  );
 
   useEffect(() => {
     if (!draft || !initial) return;
@@ -54,7 +64,7 @@ export default function ImportReviewPage() {
       initial={ready}
       base={null}
       onSaved={(id) => {
-        setDraft(null);
+        saved.current = true;
         navigate(`/recipes/${id}`, { replace: true });
       }}
     />

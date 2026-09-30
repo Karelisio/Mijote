@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import {
+  BackupError,
   buildBackupZip,
   collectBackupData,
+  openBackupZip,
   parseBackupData,
   readBackupZip,
   restoreBackupData,
 } from '@/features/backup/backupData';
+import { LATEST_VERSION } from '@/db/migrations';
 import { seedSampleRecipes } from '@/db/seed';
 import { listRecipeSummaries, searchRecipeIds } from '@/db/repos/recipes';
 import { createCollection, setRecipeCollections } from '@/db/repos/collections';
@@ -37,7 +40,9 @@ describe('backup', () => {
     const bytes = await zip.generateAsync({ type: 'uint8array' });
 
     const { data: read, images } = await readBackupZip(await JSZip.loadAsync(bytes));
-    expect(images.get('images/abc-123.jpg')).toBe(btoa('fake-jpeg'));
+    expect(await images.get('images/abc-123.jpg')!()).toBe(btoa('fake-jpeg'));
+    // JPEGs are stored as they are, not deflated again.
+    expect(zip.file('images/abc-123.jpg')!.options.compression).toBe('STORE');
 
     const target = await memoryDb();
     await seedSampleRecipes(target, 'en'); // pre-existing data must be replaced
@@ -66,6 +71,15 @@ describe('backup', () => {
     expect(read.recipes[1]!.photo).toBeNull();
   });
 
+  it('drops source links that are not http(s)', async () => {
+    const data = await collectBackupData(await populatedDb());
+    data.recipes[0]!.sourceUrl = 'javascript:alert(1)';
+    data.recipes[1]!.sourceUrl = 'https://www.marmiton.org/x';
+    const parsed = parseBackupData(JSON.parse(JSON.stringify(data)));
+    expect(parsed.recipes[0]!.sourceUrl).toBeNull();
+    expect(parsed.recipes[1]!.sourceUrl).toBe('https://www.marmiton.org/x');
+  });
+
   it('validates foreign files', () => {
     expect(() => parseBackupData({ app: 'Other' })).toThrow();
     expect(() =>
@@ -88,5 +102,33 @@ describe('backup', () => {
         shopping: [],
       }),
     ).toThrow();
+  });
+});
+
+describe('backup errors', () => {
+  const code = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (e) {
+      return e instanceof BackupError ? e.code : `other: ${String(e)}`;
+    }
+    return 'no error';
+  };
+  const valid = { app: 'Mijote', format: 1, recipes: [], collections: [], mealPlan: [], shopping: [] };
+
+  it('tells a damaged archive from a foreign or newer one', async () => {
+    expect(await code(openBackupZip(new Uint8Array([1, 2, 3, 4])))).toBe('corrupted');
+    const badJson = new JSZip();
+    badJson.file('data.json', '{"app":"Mijote",');
+    expect(await code(readBackupZip(badJson))).toBe('corrupted');
+    expect(await code(readBackupZip(new JSZip()))).toBe('invalid');
+    expect(await code(Promise.resolve().then(() => parseBackupData({ app: 'Other' })))).toBe('invalid');
+    expect(await code(Promise.resolve().then(() => parseBackupData({ ...valid, format: 2 })))).toBe('newer');
+    expect(
+      await code(
+        Promise.resolve().then(() => parseBackupData({ ...valid, schemaVersion: LATEST_VERSION + 1 })),
+      ),
+    ).toBe('newer');
+    expect(parseBackupData({ ...valid, schemaVersion: LATEST_VERSION - 1 }).recipes).toEqual([]);
   });
 });

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { Screen } from '@/ui/Screen';
 import { Button } from '@/ui/Button';
 import { ListItem, Segmented, Switch, LinearProgress } from '@/ui/Controls';
@@ -13,6 +12,9 @@ import { snackbar } from '@/store/snackbar';
 import { SEED_PRESETS } from '@/theme/palette';
 import { getDynamicSeed, isNative } from '@/platform/native';
 import { useUpdate } from '@/features/update/update';
+import { useExactAlarmAccess } from '@/features/cooking/exactAlarm';
+import { formatMegabytes } from '@/features/recipes/format';
+import { rescheduleRunningTimers } from '@/features/cooking/timers';
 import { seedSampleRecipes } from '@/db/seed';
 import { db, refreshRecipes } from '@/store/recipes';
 import {
@@ -23,6 +25,15 @@ import {
   restoreLocalBackup,
   type LocalBackup,
 } from '@/features/backup/backup';
+import { BackupError, type BackupErrorCode } from '@/features/backup/backupData';
+import type { TKey } from '@/i18n';
+
+const BACKUP_ERRORS: Record<BackupErrorCode, TKey> = {
+  corrupted: 'settings.importCorrupted',
+  invalid: 'settings.importFailed',
+  newer: 'settings.importNewer',
+  safety_failed: 'settings.safetyBackupFailed',
+};
 
 function pickZip(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -37,7 +48,7 @@ function pickZip(): Promise<File | null> {
 
 function UpdateSection() {
   const t = useT();
-  const { supported, status, latest, check } = useUpdate();
+  const { supported, status, latest, check, installed } = useUpdate();
   if (!isNative()) return null;
   const supporting = !supported
     ? t('update.storeManaged')
@@ -49,13 +60,13 @@ function UpdateSection() {
           ? t('update.upToDate')
           : status === 'error'
             ? t('update.error')
-            : t('update.current', { version: __APP_VERSION__ });
+            : t('update.current', { version: installed });
   return (
     <>
       <div className="section-title label-large">{t('update.section')}</div>
       <ListItem
         icon="download"
-        headline={supported ? t('update.check') : t('update.current', { version: __APP_VERSION__ })}
+        headline={supported ? t('update.check') : t('update.current', { version: installed })}
         supporting={supporting}
         onClick={
           supported
@@ -74,21 +85,17 @@ export default function SettingsPage() {
   const lang = useLang();
   const s = useSettings();
   const [dynamicAvailable, setDynamicAvailable] = useState(false);
-  const [exactDenied, setExactDenied] = useState(false);
+  const exactAlarm = useExactAlarmAccess(() => void rescheduleRunningTimers());
   const [busy, setBusy] = useState(false);
   const [backups, setBackups] = useState<LocalBackup[]>([]);
   const [backupsOpen, setBackupsOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingRestore, setPendingRestore] = useState<LocalBackup | null>(null);
   const [magoPrompt, setMagoPrompt] = useState(false);
+  const installed = useUpdate((u) => u.installed);
 
   useEffect(() => {
     void getDynamicSeed().then((x) => setDynamicAvailable(x !== null));
-    if (isNative()) {
-      void LocalNotifications.checkExactNotificationSetting()
-        .then((r) => setExactDenied(r.exact_alarm !== 'granted'))
-        .catch(() => undefined);
-    }
   }, []);
 
   useEffect(() => {
@@ -102,11 +109,7 @@ export default function SettingsPage() {
       if (ok) snackbar(ok);
     } catch (e) {
       console.error(e);
-      snackbar(
-        e instanceof Error && /backup|format|invalid/.test(e.message)
-          ? t('settings.importFailed')
-          : t('common.error'),
-      );
+      snackbar(e instanceof BackupError ? t(BACKUP_ERRORS[e.code]) : t('common.error'), { duration: 6000 });
     } finally {
       setBusy(false);
     }
@@ -199,12 +202,12 @@ export default function SettingsPage() {
           />
         }
       />
-      {isNative() && exactDenied && (
+      {exactAlarm.denied && (
         <ListItem
           icon="notifications"
           headline={t('settings.exactAlarms')}
           supporting={t('settings.exactAlarmsHint')}
-          onClick={() => void LocalNotifications.changeExactNotificationSetting().catch(() => undefined)}
+          onClick={exactAlarm.ask}
           trailing={<Icon name="open_in_new" size={20} />}
         />
       )}
@@ -256,7 +259,7 @@ export default function SettingsPage() {
         <img src="/favicon.svg" alt="" width={56} height={56} />
         <div>
           <div className="title-large serif">Mijote</div>
-          <div className="body-medium muted">{t('settings.version', { version: __APP_VERSION__ })}</div>
+          <div className="body-medium muted">{t('settings.version', { version: installed })}</div>
           <div className="body-small muted">{t('settings.aboutBody')}</div>
         </div>
       </div>
@@ -266,6 +269,8 @@ export default function SettingsPage() {
         title={t('settings.magoList')}
         label={t('settings.magoList')}
         initial={s.magoListName}
+        supporting={t('settings.magoListHint')}
+        allowEmpty
         confirmLabel={t('common.save')}
         cancelLabel={t('common.cancel')}
         onClose={() => setMagoPrompt(false)}
@@ -321,9 +326,13 @@ export default function SettingsPage() {
         {backups.map((b) => (
           <ListItem
             key={b.path}
-            icon="history"
-            headline={fmtDate(b.date)}
-            supporting={`${(b.size / 1024 / 1024).toFixed(1)} Mo`}
+            icon={b.kind === 'safety' ? 'settings_backup_restore' : 'history'}
+            headline={b.kind === 'safety' ? t('settings.safetyBackup') : fmtDate(b.date)}
+            supporting={
+              b.kind === 'safety'
+                ? `${fmtDate(b.date)} · ${formatMegabytes(b.size, lang)}`
+                : formatMegabytes(b.size, lang)
+            }
             onClick={() => setPendingRestore(b)}
             trailing={<span className="label-large primary-text">{t('settings.restore')}</span>}
           />

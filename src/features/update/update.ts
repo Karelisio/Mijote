@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Preferences } from '@capacitor/preferences';
+import { App as CapApp } from '@capacitor/app';
 import { MijoteNative, isNative } from '@/platform/native';
 import { compareVersions, parseRelease, RELEASES_API, type ReleaseInfo } from './releases';
 
@@ -12,6 +13,11 @@ export type UpdateStatus = 'idle' | 'checking' | 'upToDate' | 'available' | 'dow
 interface UpdateState {
   /** In-app updates exist only in the GitHub APK build on Android. */
   supported: boolean;
+  /**
+   * Installed version: the native versionName on the device (the JS build may carry another one,
+   * e.g. 1.0.0 for a local build, which made every release look like an update).
+   */
+  installed: string;
   status: UpdateStatus;
   latest: ReleaseInfo | null;
   progress: number;
@@ -26,10 +32,9 @@ interface UpdateState {
   openPermissionSettings: () => void;
 }
 
-export const currentVersion = (): string => __APP_VERSION__;
-
 export const useUpdate = create<UpdateState>((set, get) => ({
   supported: false,
+  installed: __APP_VERSION__,
   status: 'idle',
   latest: null,
   progress: 0,
@@ -39,6 +44,11 @@ export const useUpdate = create<UpdateState>((set, get) => ({
 
   init: async () => {
     if (!isNative()) return;
+    try {
+      set({ installed: (await CapApp.getInfo()).version || __APP_VERSION__ });
+    } catch {
+      // keep the web build's version
+    }
     try {
       const info = await MijoteNative.getBuildInfo();
       if (!info.updatesEnabled) return;
@@ -70,7 +80,7 @@ export const useUpdate = create<UpdateState>((set, get) => ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const latest = parseRelease(await res.json());
       await Preferences.set({ key: LAST_CHECK_KEY, value: String(Date.now()) });
-      if (!latest || compareVersions(latest.version, currentVersion()) <= 0) {
+      if (!latest || compareVersions(latest.version, get().installed) <= 0) {
         set({ status: 'upToDate', latest: null });
         return;
       }
@@ -88,13 +98,15 @@ export const useUpdate = create<UpdateState>((set, get) => ({
       set({ needsPermission: true, prompt: true });
       return;
     }
+    if (get().status === 'downloading') return;
     set({ status: 'downloading', progress: 0, error: null, needsPermission: false });
     try {
-      await MijoteNative.downloadAndInstallApk({ url: latest.apkUrl });
+      await MijoteNative.downloadAndInstallApk({ url: latest.apkUrl, sha256: latest.apkSha256 });
       // The system installer is now on screen; Android restarts the app after install.
       set({ status: 'available', prompt: false });
     } catch (e) {
       const code = (e as { code?: string }).code;
+      if (code === 'busy') return; // the download already running goes on
       if (code === 'install_permission') set({ status: 'available', needsPermission: true, prompt: true });
       else set({ status: 'error', error: e instanceof Error ? e.message : String(e) });
     }

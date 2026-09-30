@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#FFF8F4',
   },
+  // Pinch-to-zoom (accessibility): Android's WebView ignores the viewport meta otherwise.
+  zoomEnabled: true,
   plugins: {
     SystemBars: {
       insetsHandling: 'css',

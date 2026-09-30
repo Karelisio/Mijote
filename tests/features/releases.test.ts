@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { cleanNotes, compareVersions, parseRelease, parseVersion } from '@/features/update/releases';
+import {
+  cleanNotes,
+  compareVersions,
+  parseRelease,
+  parseSha256Digest,
+  parseVersion,
+} from '@/features/update/releases';
 
 describe('versions', () => {
   it('parses and compares semantic versions', () => {
@@ -23,7 +29,12 @@ describe('parseRelease', () => {
     prerelease: false,
     assets: [
       { name: 'mijote-v1.1.0.aab', browser_download_url: 'https://github.com/x.aab', size: 10 },
-      { name: 'mijote-v1.1.0.apk', browser_download_url: 'https://github.com/x.apk', size: 5_000_000 },
+      {
+        name: 'mijote-v1.1.0.apk',
+        browser_download_url: 'https://github.com/x.apk',
+        size: 5_000_000,
+        digest: `sha256:${'AB'.repeat(32)}`,
+      },
     ],
   };
 
@@ -34,6 +45,7 @@ describe('parseRelease', () => {
       notes: '- feat: in-app updates\n- fix: something',
       apkUrl: 'https://github.com/x.apk',
       apkSize: 5_000_000,
+      apkSha256: 'ab'.repeat(32),
       htmlUrl: 'https://github.com/Karelisio/Mijote/releases/tag/v1.1.0',
     });
   });
@@ -49,7 +61,28 @@ describe('parseRelease', () => {
         assets: [{ name: 'a.apk', browser_download_url: 'http://insecure/a.apk' }],
       }),
     ).toBeNull();
+    expect(
+      parseRelease({
+        ...payload,
+        assets: [{ name: 'a.apk', browser_download_url: 'https://github.com.evil.io/a.apk' }],
+      }),
+    ).toBeNull();
+    expect(
+      parseRelease({
+        ...payload,
+        assets: [{ name: 'a.apk', browser_download_url: 'https://evil.io/github.com/a.apk' }],
+      }),
+    ).toBeNull();
     expect(parseRelease(null)).toBeNull();
+  });
+
+  it('reads the SHA-256 digest GitHub publishes for assets', () => {
+    expect(parseSha256Digest(`sha256:${'0f'.repeat(32)}`)).toBe('0f'.repeat(32));
+    expect(parseSha256Digest('sha512:abc')).toBeNull();
+    expect(parseSha256Digest('sha256:not-hex')).toBeNull();
+    expect(parseSha256Digest(undefined)).toBeNull();
+    const [aab, apk] = payload.assets;
+    expect(parseRelease({ ...payload, assets: [aab, { ...apk, digest: null }] })?.apkSha256).toBeNull();
   });
 
   it('keeps at most 12 changelog lines', () => {

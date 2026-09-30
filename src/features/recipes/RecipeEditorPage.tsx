@@ -10,6 +10,8 @@ import { getRecipe, saveRecipe } from '@/db/repos/recipes';
 import { db, refreshRecipes } from '@/store/recipes';
 import { snackbar } from '@/store/snackbar';
 import { useBackHandler } from '@/platform/backStack';
+import { setExternalNavBlocker } from '@/app/navGuard';
+import { EmptyState } from '@/ui/EmptyState';
 import { RecipeForm } from './RecipeForm';
 import { emptyState, recipeFromState, stateFromRecipe, type EditState } from './editorModel';
 
@@ -29,13 +31,19 @@ export function RecipeEditor({
   const navigate = useNavigate();
   const [state, setState] = useState(initial);
   const [titleError, setTitleError] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Where to go once the user agrees to drop the changes (back, or a share / deep link).
+  const [confirmLeave, setConfirmLeave] = useState<{ proceed: () => void } | null>(null);
   const [saving, setSaving] = useState(false);
   const [baseline, setBaseline] = useState(() => JSON.stringify(initial));
   const dirty = JSON.stringify(state) !== baseline;
 
-  const leave = () => (dirty ? setConfirmDiscard(true) : navigate(-1));
-  useBackHandler(dirty && !confirmDiscard, () => setConfirmDiscard(true));
+  const goBack = { proceed: () => navigate(-1) };
+  const leave = () => (dirty ? setConfirmLeave(goBack) : navigate(-1));
+  useBackHandler(dirty && !confirmLeave, () => setConfirmLeave(goBack));
+  useEffect(() => {
+    if (!dirty) return;
+    return setExternalNavBlocker((proceed) => setConfirmLeave({ proceed }));
+  }, [dirty]);
 
   const save = async () => {
     if (!state.title.trim()) {
@@ -75,16 +83,16 @@ export function RecipeEditor({
         </Button>
       </div>
       <ConfirmDialog
-        open={confirmDiscard}
+        open={!!confirmLeave}
         title={t('editor.discardTitle')}
         body={t('editor.discardBody')}
         confirmLabel={t('editor.discard')}
         cancelLabel={t('common.cancel')}
         danger
-        onClose={() => setConfirmDiscard(false)}
+        onClose={() => setConfirmLeave(null)}
         onConfirm={() => {
           setBaseline(JSON.stringify(state));
-          navigate(-1);
+          confirmLeave?.proceed();
         }}
       />
     </Screen>
@@ -111,6 +119,14 @@ export default function RecipeEditorPage() {
         <div className="center" style={{ padding: 64 }}>
           <Spinner />
         </div>
+      </Screen>
+    );
+  }
+  // An unknown id (deleted recipe, stale link) must not open an empty "new recipe" editor.
+  if (id && !base) {
+    return (
+      <Screen title="" back>
+        <EmptyState illustration="search" title={t('recipe.notFound')} />
       </Screen>
     );
   }

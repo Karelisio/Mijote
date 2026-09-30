@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, Reorder, motion, useDragControls } from 'framer-motion';
 import { Button, IconButton } from '@/ui/Button';
 import { Chip } from '@/ui/Chip';
@@ -78,18 +78,36 @@ function StepEditItem({
   step,
   index,
   autoFocus,
+  focusMove,
   onText,
   onRemove,
+  onMove,
+  canMoveUp,
+  canMoveDown,
 }: {
   step: { id: string; text: string };
   index: number;
   autoFocus: boolean;
+  /** After a move with a button, that button keeps the focus. */
+  focusMove: -1 | 1 | null;
   onText: (text: string) => void;
   onRemove: () => void;
+  onMove: (delta: -1 | 1) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const t = useT();
   const controls = useDragControls();
-  // Dragging only from the handle keeps text selection and scrolling usable.
+  const up = useRef<HTMLButtonElement>(null);
+  const down = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusMove === null) return;
+    // The moved row's button keeps the focus (the other one once the list end is reached).
+    const [first, second] = focusMove === -1 ? [up, down] : [down, up];
+    (first.current?.disabled ? second : first).current?.focus();
+  }, [focusMove]);
+  // Dragging only from the handle keeps text selection and scrolling usable; the arrow buttons
+  // do the same for keyboards and screen readers.
   return (
     <Reorder.Item value={step} className="step-edit" dragListener={false} dragControls={controls}>
       <span className="step-num">{index + 1}</span>
@@ -102,14 +120,26 @@ function StepEditItem({
         autoFocus={autoFocus}
         onChange={onText}
       />
-      <div className="col" style={{ gap: 0 }}>
-        <span
-          className="drag-handle"
-          onPointerDown={(e) => controls.start(e)}
-          aria-label={t('editor.moveDown')}
-        >
+      <div className="step-edit-tools">
+        <IconButton
+          ref={up}
+          icon="keyboard_arrow_up"
+          small
+          label={t('editor.moveUp')}
+          disabled={!canMoveUp}
+          onClick={() => onMove(-1)}
+        />
+        <span className="drag-handle" onPointerDown={(e) => controls.start(e)} aria-hidden="true">
           <Icon name="drag_indicator" />
         </span>
+        <IconButton
+          ref={down}
+          icon="keyboard_arrow_down"
+          small
+          label={t('editor.moveDown')}
+          disabled={!canMoveDown}
+          onClick={() => onMove(1)}
+        />
         <IconButton icon="close" small label={t('common.delete')} onClick={onRemove} />
       </div>
     </Reorder.Item>
@@ -122,7 +152,23 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
   const [pasteFor, setPasteFor] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState('');
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [moved, setMoved] = useState<{ id: string; delta: -1 | 1 } | null>(null);
   const set = (patch: Partial<EditState>) => onChange({ ...s, ...patch });
+
+  // Children focus their moved button first (their effects run before this one), then it is cleared.
+  useEffect(() => {
+    if (moved) setMoved(null);
+  }, [moved]);
+
+  const moveStep = (id: string, delta: -1 | 1) => {
+    const i = s.steps.findIndex((x) => x.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= s.steps.length) return;
+    const steps = [...s.steps];
+    [steps[i], steps[j]] = [steps[j]!, steps[i]!];
+    setMoved({ id, delta });
+    set({ steps });
+  };
 
   const updateSection = (id: string, fn: (sec: EditSection) => EditSection) =>
     set({ sections: s.sections.map((sec) => (sec.id === id ? fn(sec) : sec)) });
@@ -151,7 +197,12 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
 
   return (
     <div className="form">
-      <button type="button" className="form-photo ripple" onClick={() => setPhotoSheet(true)}>
+      <button
+        type="button"
+        className="form-photo ripple"
+        aria-label={s.photo ? t('editor.changePhoto') : t('editor.photo')}
+        onClick={() => setPhotoSheet(true)}
+      >
         {s.photo ? (
           <RecipeImage path={s.photo} category={s.category} alt="" />
         ) : (
@@ -190,7 +241,7 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <span className="body-large">{t('editor.servings')}</span>
-        <Stepper value={s.servings} onChange={(servings) => set({ servings })} labelMinus="-" labelPlus="+" />
+        <Stepper value={s.servings} onChange={(servings) => set({ servings })} />
       </div>
       <div className="form-grid">
         <TextField
@@ -301,8 +352,12 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
             step={st}
             index={idx}
             autoFocus={focusId === st.id}
+            focusMove={moved?.id === st.id ? moved.delta : null}
+            canMoveUp={idx > 0}
+            canMoveDown={idx < s.steps.length - 1}
             onText={(text) => set({ steps: s.steps.map((x) => (x.id === st.id ? { ...x, text } : x)) })}
             onRemove={() => set({ steps: s.steps.filter((x) => x.id !== st.id) })}
+            onMove={(delta) => moveStep(st.id, delta)}
           />
         ))}
       </Reorder.Group>

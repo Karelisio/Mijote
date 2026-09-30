@@ -1,18 +1,22 @@
 /** Parsers for recipe durations, returning whole minutes or null when unparseable. */
 
-/** ISO-8601 duration, e.g. "PT1H20M", "P0DT0H45M", "PT90M", "PT0.5H". */
+const ISO_NUM = String.raw`(\d+(?:[.,]\d+)?)`;
+const ISO_RE = new RegExp(
+  `^P(?:${ISO_NUM}Y)?(?:${ISO_NUM}M)?(?:${ISO_NUM}W)?(?:${ISO_NUM}D)?` +
+    `(?:T(?:${ISO_NUM}H)?(?:${ISO_NUM}M)?(?:${ISO_NUM}S)?)?$`,
+  'i',
+);
+
+/** ISO-8601 duration, e.g. "PT1H20M", "P0DT0H45M", "PT90M", "PT0.5H", "P0Y0M0DT0H20M0.000S". */
 export function parseIsoDuration(s: string): number | null {
-  const trimmed = s.trim();
-  const match =
-    /^P(?:(\d+(?:[.,]\d+)?)D)?(?:T(?:(\d+(?:[.,]\d+)?)H)?(?:(\d+(?:[.,]\d+)?)M)?(?:(\d+(?:[.,]\d+)?)S)?)?$/.exec(
-      trimmed,
-    );
+  const match = ISO_RE.exec(s.trim());
   if (!match) return null;
-  const [, days, hours, minutes, seconds] = match;
-  if (!days && !hours && !minutes && !seconds) return null;
+  const [, years, months, weeks, days, hours, minutes, seconds] = match;
+  if (![years, months, weeks, days, hours, minutes, seconds].some(Boolean)) return null;
 
   const num = (v: string | undefined): number => (v ? parseFloat(v.replace(',', '.')) : 0);
-  const totalMinutes = num(days) * 24 * 60 + num(hours) * 60 + num(minutes) + num(seconds) / 60;
+  const totalDays = num(years) * 365 + num(months) * 30 + num(weeks) * 7 + num(days);
+  const totalMinutes = totalDays * 24 * 60 + num(hours) * 60 + num(minutes) + num(seconds) / 60;
   if (!Number.isFinite(totalMinutes) || totalMinutes < 0) return null;
   return Math.round(totalMinutes);
 }
@@ -72,4 +76,11 @@ export function parseHumanDuration(s: string): number | null {
   }
 
   return null;
+}
+
+/** A duration given as ISO-8601, as text ("20 min", "1 h 30") or as a number of minutes. */
+export function parseDuration(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  if (typeof v !== 'string' || !v.trim()) return null;
+  return parseIsoDuration(v) ?? parseHumanDuration(v);
 }

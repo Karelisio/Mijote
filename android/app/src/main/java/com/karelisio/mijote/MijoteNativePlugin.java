@@ -17,6 +17,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Small native bridge for Mijote:
@@ -28,6 +31,9 @@ import java.net.URL;
 public class MijoteNativePlugin extends Plugin {
 
     private JSObject pendingShare;
+
+    /** One update download at a time: they share the same file in the cache. */
+    private final AtomicBoolean downloading = new AtomicBoolean(false);
 
     @Override
     public void load() {
@@ -115,47 +121,54 @@ public class MijoteNativePlugin extends Plugin {
     }
 
     /**
-     * Downloads the APK into the private cache (progress via "updateProgress" events)
-     * then hands it to the system package installer.
+     * Downloads the APK into the private cache (progress via "updateProgress" events), checks it
+     * against the SHA-256 published with the release when there is one, then hands it to the
+     * system package installer.
      */
     @PluginMethod
     public void downloadAndInstallApk(PluginCall call) {
         String url = call.getString("url");
+        String expectedSha256 = call.getString("sha256");
         if (!BuildConfig.IN_APP_UPDATES) {
             call.reject("In-app updates are disabled in this build", "disabled");
             return;
         }
-        if (url == null || !url.startsWith("https://")) {
-            call.reject("A https url is required", "bad_url");
+        if (!isAllowedUpdateUrl(url, true)) {
+            call.reject("Only https GitHub release URLs are accepted", "bad_url");
+            return;
+        }
+        if (expectedSha256 != null && !expectedSha256.matches("^[0-9a-fA-F]{64}$")) {
+            call.reject("Invalid SHA-256", "bad_digest");
             return;
         }
         if (!canInstall()) {
             call.reject("Install permission not granted", "install_permission");
             return;
         }
+        if (!downloading.compareAndSet(false, true)) {
+            call.reject("An update is already being downloaded", "busy");
+            return;
+        }
         new Thread(() -> {
             HttpURLConnection connection = null;
+            File apk = new File(new File(getContext().getCacheDir(), "updates"), "mijote-update.apk");
+            boolean ready = false;
             try {
-                File dir = new File(getContext().getCacheDir(), "updates");
-                if (!dir.exists() && !dir.mkdirs()) throw new Exception("cannot create cache dir");
-                File apk = new File(dir, "mijote-update.apk");
+                File dir = apk.getParentFile();
+                if (dir != null && !dir.exists() && !dir.mkdirs()) throw new Exception("cannot create cache dir");
 
-                connection = (HttpURLConnection) new URL(url).openConnection();
-                connection.setInstanceFollowRedirects(true);
-                connection.setConnectTimeout(15000);
-                connection.setReadTimeout(30000);
-                connection.connect();
-                int code = connection.getResponseCode();
-                if (code < 200 || code > 299) throw new Exception("HTTP " + code);
+                connection = openGithubDownload(url);
 
                 long total = connection.getContentLengthLong();
                 long done = 0;
                 int lastPercent = -1;
+                MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
                 try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
                     byte[] buffer = new byte[64 * 1024];
                     int read;
                     while ((read = in.read(buffer)) != -1) {
                         out.write(buffer, 0, read);
+                        sha256.update(buffer, 0, read);
                         done += read;
                         if (total > 0) {
                             int percent = (int) (done * 100 / total);
@@ -168,6 +181,11 @@ public class MijoteNativePlugin extends Plugin {
                         }
                     }
                 }
+                if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(toHex(sha256.digest()))) {
+                    call.reject("The downloaded file does not match the release checksum", "checksum");
+                    return;
+                }
+                ready = true;
 
                 Uri apkUri = FileProvider.getUriForFile(
                     getContext(),
@@ -189,8 +207,74 @@ public class MijoteNativePlugin extends Plugin {
                 call.reject("Download failed: " + e.getMessage(), "download");
             } finally {
                 if (connection != null) connection.disconnect();
+                // A partial or altered file must never be installed later.
+                if (!ready && apk.exists() && !apk.delete()) apk.deleteOnExit();
+                downloading.set(false);
             }
         }).start();
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder hex = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) hex.append(String.format(Locale.ROOT, "%02x", b));
+        return hex.toString();
+    }
+
+    private static final int MAX_REDIRECTS = 5;
+
+    /**
+     * Release APKs are downloaded from GitHub only: the request starts on github.com (or
+     * api.github.com) and may only be redirected to github.com or its download CDN
+     * (*.githubusercontent.com), over https.
+     */
+    static boolean isAllowedUpdateUrl(String address, boolean initial) {
+        if (address == null) return false;
+        try {
+            return isAllowedUpdateUrl(new URL(address), initial);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static boolean isAllowedUpdateUrl(URL url, boolean initial) {
+        if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost() == null) return false;
+        String host = url.getHost().toLowerCase(Locale.ROOT);
+        if (host.equals("github.com")) return true;
+        if (initial) return host.equals("api.github.com");
+        return host.endsWith(".githubusercontent.com");
+    }
+
+    /** Opens the APK download, following redirects by hand so that every hop is checked. */
+    private static HttpURLConnection openGithubDownload(String address) throws Exception {
+        URL url = new URL(address);
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(30000);
+            connection.setRequestProperty("Accept", "application/octet-stream");
+            int code = connection.getResponseCode();
+            if (code >= 300 && code <= 399) {
+                String location = connection.getHeaderField("Location");
+                connection.disconnect();
+                if (location == null) throw new Exception("HTTP " + code + " without Location");
+                url = new URL(url, location);
+                if (!isAllowedUpdateUrl(url, false)) {
+                    throw new Exception("Redirected outside GitHub: " + url.getHost());
+                }
+                continue;
+            }
+            if (code < 200 || code > 299) {
+                connection.disconnect();
+                throw new Exception("HTTP " + code);
+            }
+            if (!isAllowedUpdateUrl(connection.getURL(), false)) {
+                connection.disconnect();
+                throw new Exception("Unexpected download host: " + connection.getURL().getHost());
+            }
+            return connection;
+        }
+        throw new Exception("Too many redirects");
     }
 
     private boolean canInstall() {

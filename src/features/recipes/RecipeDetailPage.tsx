@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Screen } from '@/ui/Screen';
@@ -19,6 +19,7 @@ import { startStepTimer } from '@/features/cooking/startStepTimer';
 import { sendToMago } from '@/features/mago/sendToMago';
 import { AddToPlanSheet } from '@/features/planner/AddToPlanSheet';
 import { shareFile, shareText } from '@/platform/share';
+import { safeHttpUrl } from '@/lib/url';
 import { formatAmount, recipeToText } from './format';
 import { scaleIngredient } from './portions';
 import { StepText } from './StepText';
@@ -52,6 +53,8 @@ export function RecipeDetailPage() {
   const summary = summaries.find((s) => s.id === id);
   const [recipe, setRecipe] = useState<Recipe | null | undefined>(undefined);
   const [servings, setServings] = useState(4);
+  // Servings are set from the recipe once per recipe, not at every reload (favourite, cooked…).
+  const servingsFor = useRef<string | null>(null);
   const [collectionIds, setCollectionIds] = useState<Id[]>([]);
   const [planOpen, setPlanOpen] = useState(false);
   const [collectionsOpen, setCollectionsOpen] = useState(false);
@@ -65,7 +68,10 @@ export function RecipeDetailPage() {
       if (!alive) return;
       setRecipe(r);
       setCollectionIds(cols);
-      if (r) setServings(r.servings);
+      if (r && servingsFor.current !== r.id) {
+        servingsFor.current = r.id;
+        setServings(r.servings);
+      }
     })();
     return () => {
       alive = false;
@@ -106,6 +112,7 @@ export function RecipeDetailPage() {
   const rating = summary?.rating ?? recipe.rating;
   const factor = recipe.servings > 0 ? servings / recipe.servings : 1;
   const total = (recipe.prepMinutes ?? 0) + (recipe.cookMinutes ?? 0);
+  const sourceLink = safeHttpUrl(recipe.sourceUrl);
 
   const shareImage = async () => {
     snackbar(t('share.generating'), { duration: 1500 });
@@ -267,8 +274,6 @@ export function RecipeDetailPage() {
             <Stepper
               value={servings}
               onChange={setServings}
-              labelMinus="-"
-              labelPlus="+"
               format={(v) => (
                 <span className="row" style={{ gap: 4, justifyContent: 'center' }}>
                   <Icon name="group" size={18} />
@@ -326,14 +331,24 @@ export function RecipeDetailPage() {
           </section>
         )}
 
-        {recipe.sourceUrl && (
-          <a className="source-link" href={recipe.sourceUrl} target="_blank" rel="noreferrer">
+        {sourceLink ? (
+          <a className="source-link" href={sourceLink} target="_blank" rel="noreferrer">
             <Icon name="public" size={18} />
             <span className="ellipsis">
-              {t('recipe.source')} · {hostOf(recipe.sourceUrl)}
+              {t('recipe.source')} · {hostOf(sourceLink)}
             </span>
             <Icon name="open_in_new" size={16} />
           </a>
+        ) : (
+          // Anything but an http(s) URL (older data) is shown as text, never as a link.
+          recipe.sourceUrl && (
+            <p className="source-link selectable">
+              <Icon name="public" size={18} />
+              <span className="ellipsis">
+                {t('recipe.source')} · {recipe.sourceUrl}
+              </span>
+            </p>
+          )
         )}
       </motion.div>
 

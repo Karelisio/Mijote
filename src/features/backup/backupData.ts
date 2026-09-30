@@ -1,11 +1,37 @@
 import JSZip from 'jszip';
 import type { DbDriver, Sql } from '@/db/driver';
 import type { MealPlanEntry, Recipe, ShoppingItem } from '@/db/types';
-import { getRecipe, saveRecipeTx } from '@/db/repos/recipes';
+import { listFullRecipes, saveRecipeTx } from '@/db/repos/recipes';
 import { listShopping } from '@/db/repos/shopping';
-import { getUserVersion } from '@/db/migrations';
+import { getUserVersion, LATEST_VERSION } from '@/db/migrations';
+import { safeHttpUrl } from '@/lib/url';
 
 export const BACKUP_FORMAT = 1;
+
+/**
+ * Why a backup cannot be restored: an unreadable (damaged) archive, a file that is not a Mijote
+ * backup, a backup made by a newer version of Mijote, or no safety copy of the current data.
+ */
+export type BackupErrorCode = 'corrupted' | 'invalid' | 'newer' | 'safety_failed';
+
+export class BackupError extends Error {
+  constructor(
+    readonly code: BackupErrorCode,
+    cause?: unknown,
+  ) {
+    super(`backup: ${code}`, { cause });
+    this.name = 'BackupError';
+  }
+}
+
+/** Opens a .zip archive (Blob, bytes or base64 text); a damaged one is a BackupError. */
+export async function openBackupZip(data: Blob | Uint8Array | string, base64 = false): Promise<JSZip> {
+  try {
+    return await JSZip.loadAsync(data, { base64 });
+  } catch (e) {
+    throw new BackupError('corrupted', e);
+  }
+}
 
 export interface BackupCollection {
   id: string;
@@ -28,12 +54,7 @@ export interface BackupData {
 }
 
 export async function collectBackupData(db: Sql, now = Date.now()): Promise<BackupData> {
-  const ids = await db.query<{ id: string }>('SELECT id FROM recipes ORDER BY created_at');
-  const recipes: Recipe[] = [];
-  for (const { id } of ids) {
-    const r = await getRecipe(db, id);
-    if (r) recipes.push(r);
-  }
+  const recipes = await listFullRecipes(db);
   const cols = await db.query<{
     id: string;
     name: string;
@@ -82,10 +103,16 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 
 /** Structural validation of an untrusted backup file. */
 export function parseBackupData(raw: unknown): BackupData {
-  if (!isObj(raw) || raw.app !== 'Mijote') throw new Error('not_a_mijote_backup');
-  if (typeof raw.format !== 'number' || raw.format > BACKUP_FORMAT) throw new Error('unsupported_format');
+  if (!isObj(raw) || raw.app !== 'Mijote' || typeof raw.format !== 'number') {
+    throw new BackupError('invalid');
+  }
+  // Written by a newer Mijote: its data may not fit this version's database.
+  if (raw.format > BACKUP_FORMAT) throw new BackupError('newer');
+  if (typeof raw.schemaVersion === 'number' && raw.schemaVersion > LATEST_VERSION) {
+    throw new BackupError('newer');
+  }
   for (const key of ['recipes', 'collections', 'mealPlan', 'shopping'] as const) {
-    if (!Array.isArray(raw[key])) throw new Error(`invalid_${key}`);
+    if (!Array.isArray(raw[key])) throw new BackupError('invalid');
   }
   const recipes = raw.recipes as unknown[];
   for (const r of recipes) {
@@ -96,10 +123,13 @@ export function parseBackupData(raw: unknown): BackupData {
       !Array.isArray(r.sections) ||
       !Array.isArray(r.steps)
     ) {
-      throw new Error('invalid_recipe');
+      throw new BackupError('invalid');
     }
   }
-  return raw as unknown as BackupData;
+  const data = raw as unknown as BackupData;
+  // Only http(s) sources: an archive must not bring a javascript: link into the app.
+  for (const r of data.recipes) r.sourceUrl = safeHttpUrl(r.sourceUrl);
+  return data;
 }
 
 /** Replaces the whole database content with the backup (single transaction). */
@@ -164,8 +194,14 @@ export function restoreBackupData(db: DbDriver, data: BackupData): Promise<void>
   });
 }
 
-/** images: relative path → base64 content */
-export async function buildBackupZip(data: BackupData, images: Map<string, string>): Promise<JSZip> {
+/**
+ * images: relative path → file bytes (or base64 text). Photos are JPEGs, already compressed:
+ * stored as they are rather than deflated again.
+ */
+export async function buildBackupZip(
+  data: BackupData,
+  images: Map<string, Uint8Array | string>,
+): Promise<JSZip> {
   const zip = new JSZip();
   zip.file('data.json', JSON.stringify(data));
   zip.file(
@@ -183,21 +219,35 @@ export async function buildBackupZip(data: BackupData, images: Map<string, strin
       2,
     ),
   );
-  for (const [path, b64] of images) zip.file(path, b64, { base64: true });
+  for (const [path, content] of images) {
+    zip.file(path, content, { base64: typeof content === 'string', compression: 'STORE' });
+  }
   return zip;
 }
 
-export async function readBackupZip(zip: JSZip): Promise<{ data: BackupData; images: Map<string, string> }> {
+/**
+ * Reads and validates data.json. Photos are read one at a time when restoring (path → reader of
+ * its base64 content) rather than all kept in memory.
+ */
+export async function readBackupZip(
+  zip: JSZip,
+): Promise<{ data: BackupData; images: Map<string, () => Promise<string>> }> {
   const file = zip.file('data.json');
-  if (!file) throw new Error('not_a_mijote_backup');
-  const data = parseBackupData(JSON.parse(await file.async('string')));
-  const images = new Map<string, string>();
+  if (!file) throw new BackupError('invalid');
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await file.async('string'));
+  } catch (e) {
+    throw new BackupError('corrupted', e);
+  }
+  const data = parseBackupData(raw);
+  const images = new Map<string, () => Promise<string>>();
   const wanted = new Set(data.recipes.map((r) => r.photo).filter((p): p is string => !!p));
   for (const path of wanted) {
     // Only accept plain image paths inside images/ (no traversal).
     if (!/^images\/[\w-]+\.(jpe?g|png|webp)$/i.test(path)) continue;
     const f = zip.file(path);
-    if (f) images.set(path, await f.async('base64'));
+    if (f) images.set(path, () => f.async('base64'));
   }
   for (const r of data.recipes) if (r.photo && !images.has(r.photo)) r.photo = null;
   return { data, images };
