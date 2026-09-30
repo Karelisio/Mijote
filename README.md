@@ -121,6 +121,6 @@ Conservez le `.jks` et ses mots de passe en lieu sûr (hors du dépôt) : sans e
 git tag v1.0.0 && git push --tags
 ```
 
-Le workflow `release.yml` lance lint + tests, construit l'APK et l'AAB signés et crée la GitHub Release avec le changelog des commits. Il peut aussi être lancé manuellement (Actions → Release → Run workflow).
+Le workflow `release.yml` lance lint, format et tests, construit l'APK et l'AAB signés et crée la GitHub Release avec le changelog des commits depuis la version précédente. Il peut aussi être lancé manuellement (Actions → Release → Run workflow) avec une version `vX.Y.Z` obligatoire : si le tag existe, c'est ce tag qui est reconstruit ; sinon la branche choisie est construite et le tag est créé sur ce commit par la release (pas besoin de pousser le tag). Les fichiers d'une release déjà publiée ne sont jamais remplacés.
 
 `ci.yml` tourne sur chaque push/PR : lint, format, typecheck, tests, build web et build Android debug.

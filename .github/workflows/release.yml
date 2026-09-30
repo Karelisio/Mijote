@@ -6,11 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version à publier (ex. v1.0.1). Vide = dernier tag.'
-        required: false
+        description: >-
+          Version à publier (vX.Y.Z). Tag existant : ce tag est reconstruit. Nouveau : le tag est
+          créé sur le commit de la branche choisie ci-dessus.
+        required: true
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -21,21 +27,42 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
+      # Inputs only reach the shell through env (never ${{ }} inside a script).
+      - name: Resolve version, commit and previous release
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            TAG="${{ github.event.inputs.version }}"
-          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF_NAME}"
-          else
-            TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v1.0.0)"
-          fi
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_VERSION"; else TAG="$GITHUB_REF_NAME"; fi
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag invalide: $TAG (attendu vX.Y.Z)"; exit 1
+            echo "::error::Version invalide : « $TAG » (attendu vX.Y.Z)"; exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null; then
+            # Existing tag: build exactly that commit, whatever branch the run was started from.
+            SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+            git checkout -q --detach "$SHA"
+            echo "Tag $TAG existant : construction de $SHA"
+          else
+            # New version: build the dispatched commit; the release step creates the tag on it.
+            SHA="$(git rev-parse HEAD)"
+            echo "Nouveau tag $TAG : il sera créé sur $SHA"
+          fi
+          # Previous release: highest vX.Y.Z tag below TAG among those reachable from the commit.
+          PREV=""
+          for t in $(git tag --list 'v*' --merged "$SHA" --sort=-version:refname); do
+            [[ "$t" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            [ "$t" != "$TAG" ] || continue
+            if [ "$(printf '%s\n%s\n' "$t" "$TAG" | sort -V | tail -n 1)" = "$TAG" ]; then PREV="$t"; break; fi
+          done
+          echo "Version précédente : ${PREV:-aucune}"
+          {
+            echo "tag=$TAG"
+            echo "name=${TAG#v}"
+            echo "sha=$SHA"
+            echo "prev=$PREV"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v5
         with:
@@ -51,6 +78,7 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      - run: npm run format:check
       - run: npm test
 
       - name: Build web app
@@ -80,34 +108,48 @@ jobs:
         run: ./gradlew assembleGithubRelease bundlePlayRelease --no-daemon --stacktrace
 
       - name: Collect artifacts
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/github/release/app-github-release.apk "out/mijote-${{ steps.version.outputs.tag }}.apk"
-          cp android/app/build/outputs/bundle/playRelease/app-play-release.aab "out/mijote-${{ steps.version.outputs.tag }}.aab"
+          cp android/app/build/outputs/apk/github/release/app-github-release.apk "out/mijote-$TAG.apk"
+          cp android/app/build/outputs/bundle/playRelease/app-play-release.aab "out/mijote-$TAG.aab"
           rm -f "$ANDROID_KEYSTORE_PATH"
 
       - name: Changelog from commits
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          PREV: ${{ steps.version.outputs.prev }}
+          SHA: ${{ steps.version.outputs.sha }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          PREV="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
-          RANGE="${PREV:+$PREV..}$TAG"
-          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || RANGE="${PREV:+$PREV..}HEAD"
+          set -euo pipefail
           {
             echo "## Mijote $TAG"
             echo
-            if [ -n "$PREV" ]; then echo "Changements depuis $PREV :"; else echo "Première version."; fi
-            echo
-            git log --no-merges --pretty='- %s (%h)' $RANGE
+            if [ -n "$PREV" ]; then
+              echo "Changements depuis $PREV :"
+              echo
+              git log --no-merges --pretty='- %s (%h)' "$PREV..$SHA"
+            else
+              echo "Première version."
+              echo
+              git log --no-merges --pretty='- %s (%h)' "$SHA"
+            fi
             echo
             echo "**APK** : installation directe, mises à jour intégrées à l'app · **AAB** : Google Play"
           } > CHANGELOG_RELEASE.md
           cat CHANGELOG_RELEASE.md
 
+      # Creates the release (and the tag, on the built commit, when it does not exist yet: a
+      # dispatch is enough, no tag push needed). Assets already published are never replaced.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ steps.version.outputs.sha }}
           name: Mijote ${{ steps.version.outputs.tag }}
           body_path: CHANGELOG_RELEASE.md
+          fail_on_unmatched_files: true
+          overwrite_files: false
           files: |
             out/*.apk
             out/*.aab
