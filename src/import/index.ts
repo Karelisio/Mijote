@@ -33,11 +33,14 @@ export async function importFromUrl(url: string, opts: FetchOptions = {}): Promi
       body = await fetchText(secure, opts);
       target = secure;
     } catch (e) {
-      // Aborted, or the site answered over https (e.g. 404): nothing to do with clear text.
       if (e instanceof DOMException && e.name === 'AbortError') throw e;
-      if (e instanceof Error && /^http_\d+$/.test(e.message)) throw e;
-      if (Capacitor.isNativePlatform()) throw new Error('insecure_http');
-      body = await fetchText(url, opts);
+      if (!Capacitor.isNativePlatform()) {
+        body = await fetchText(url, opts); // the browser (or the dev proxy) can load http://
+      } else if (e instanceof Error && /^http_\d+$/.test(e.message)) {
+        throw e; // the site answered over https (e.g. 404): nothing to do with clear text
+      } else {
+        throw new Error('insecure_http');
+      }
     }
   } else {
     body = await fetchText(url, opts);
