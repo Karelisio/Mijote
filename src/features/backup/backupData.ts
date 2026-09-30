@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import type { DbDriver, Sql } from '@/db/driver';
 import type { MealPlanEntry, Recipe, ShoppingItem } from '@/db/types';
-import { getRecipe, saveRecipeTx } from '@/db/repos/recipes';
+import { listFullRecipes, saveRecipeTx } from '@/db/repos/recipes';
 import { listShopping } from '@/db/repos/shopping';
 import { getUserVersion, LATEST_VERSION } from '@/db/migrations';
 import { safeHttpUrl } from '@/lib/url';
@@ -54,12 +54,7 @@ export interface BackupData {
 }
 
 export async function collectBackupData(db: Sql, now = Date.now()): Promise<BackupData> {
-  const ids = await db.query<{ id: string }>('SELECT id FROM recipes ORDER BY created_at');
-  const recipes: Recipe[] = [];
-  for (const { id } of ids) {
-    const r = await getRecipe(db, id);
-    if (r) recipes.push(r);
-  }
+  const recipes = await listFullRecipes(db);
   const cols = await db.query<{
     id: string;
     name: string;
@@ -199,8 +194,14 @@ export function restoreBackupData(db: DbDriver, data: BackupData): Promise<void>
   });
 }
 
-/** images: relative path → base64 content */
-export async function buildBackupZip(data: BackupData, images: Map<string, string>): Promise<JSZip> {
+/**
+ * images: relative path → file bytes (or base64 text). Photos are JPEGs, already compressed:
+ * stored as they are rather than deflated again.
+ */
+export async function buildBackupZip(
+  data: BackupData,
+  images: Map<string, Uint8Array | string>,
+): Promise<JSZip> {
   const zip = new JSZip();
   zip.file('data.json', JSON.stringify(data));
   zip.file(
@@ -218,11 +219,19 @@ export async function buildBackupZip(data: BackupData, images: Map<string, strin
       2,
     ),
   );
-  for (const [path, b64] of images) zip.file(path, b64, { base64: true });
+  for (const [path, content] of images) {
+    zip.file(path, content, { base64: typeof content === 'string', compression: 'STORE' });
+  }
   return zip;
 }
 
-export async function readBackupZip(zip: JSZip): Promise<{ data: BackupData; images: Map<string, string> }> {
+/**
+ * Reads and validates data.json. Photos are read one at a time when restoring (path → reader of
+ * its base64 content) rather than all kept in memory.
+ */
+export async function readBackupZip(
+  zip: JSZip,
+): Promise<{ data: BackupData; images: Map<string, () => Promise<string>> }> {
   const file = zip.file('data.json');
   if (!file) throw new BackupError('invalid');
   let raw: unknown;
@@ -232,13 +241,13 @@ export async function readBackupZip(zip: JSZip): Promise<{ data: BackupData; ima
     throw new BackupError('corrupted', e);
   }
   const data = parseBackupData(raw);
-  const images = new Map<string, string>();
+  const images = new Map<string, () => Promise<string>>();
   const wanted = new Set(data.recipes.map((r) => r.photo).filter((p): p is string => !!p));
   for (const path of wanted) {
     // Only accept plain image paths inside images/ (no traversal).
     if (!/^images\/[\w-]+\.(jpe?g|png|webp)$/i.test(path)) continue;
     const f = zip.file(path);
-    if (f) images.set(path, await f.async('base64'));
+    if (f) images.set(path, () => f.async('base64'));
   }
   for (const r of data.recipes) if (r.photo && !images.has(r.photo)) r.photo = null;
   return { data, images };

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteRecipe,
   getRecipe,
+  listFullRecipes,
   listRecipeSummaries,
   markCooked,
   saveRecipe,
@@ -99,5 +100,14 @@ describe('recipes repository', () => {
     const rows = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM recipes');
     expect(Number(rows[0]!.n)).toBe(0);
     expect(await getMeta(db, 'seeded')).toBeNull();
+  });
+
+  it('loads every full recipe in one pass, identical to getRecipe', async () => {
+    const db = await memoryDb();
+    await seedSampleRecipes(db, 'fr');
+    const all = await listFullRecipes(db);
+    expect(all).toHaveLength(3);
+    for (const r of all) expect(r).toEqual(await getRecipe(db, r.id));
+    expect(all.map((r) => r.createdAt)).toEqual([...all.map((r) => r.createdAt)].sort((a, b) => a - b));
   });
 });

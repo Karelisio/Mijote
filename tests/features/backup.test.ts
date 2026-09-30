@@ -40,7 +40,9 @@ describe('backup', () => {
     const bytes = await zip.generateAsync({ type: 'uint8array' });
 
     const { data: read, images } = await readBackupZip(await JSZip.loadAsync(bytes));
-    expect(images.get('images/abc-123.jpg')).toBe(btoa('fake-jpeg'));
+    expect(await images.get('images/abc-123.jpg')!()).toBe(btoa('fake-jpeg'));
+    // JPEGs are stored as they are, not deflated again.
+    expect(zip.file('images/abc-123.jpg')!.options.compression).toBe('STORE');
 
     const target = await memoryDb();
     await seedSampleRecipes(target, 'en'); // pre-existing data must be replaced

@@ -27,14 +27,22 @@ function stamp(d = new Date()): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 async function createZip(): Promise<JSZip> {
   const d = await db();
   const data = await collectBackupData(d);
-  const images = new Map<string, string>();
+  // Kept as bytes (a quarter smaller than base64), one text at a time.
+  const images = new Map<string, Uint8Array>();
   for (const r of data.recipes) {
     if (!r.photo || images.has(r.photo)) continue;
     try {
-      images.set(r.photo, await readImageBase64(r.photo));
+      images.set(r.photo, base64ToBytes(await readImageBase64(r.photo)));
     } catch {
       // missing file: exported without photo
     }
@@ -116,7 +124,7 @@ async function restoreZip(zip: JSZip): Promise<void> {
   } catch (e) {
     throw new BackupError('safety_failed', e);
   }
-  for (const [path, b64] of images) await writeImageBase64(path, b64);
+  for (const [path, read] of images) await writeImageBase64(path, await read());
   await restoreBackupData(await db(), data);
   await refreshRecipes();
   await useShopping.getState().load();

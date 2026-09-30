@@ -68,42 +68,45 @@ export async function listRecipeSummaries(db: Sql): Promise<RecipeSummary[]> {
   }));
 }
 
-export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
-  const [row] = await db.query<RecipeRow>('SELECT * FROM recipes WHERE id = ?', [id]);
-  if (!row) return null;
-  const [sections, ingredients, steps, tags] = await Promise.all([
-    db.query<{ id: string; name: string }>(
-      'SELECT id, name FROM ingredient_sections WHERE recipe_id = ? ORDER BY position',
-      [id],
-    ),
-    db.query<{
-      id: string;
-      section_id: string | null;
-      quantity: number | null;
-      quantity_max: number | null;
-      unit: string;
-      name: string;
-      note: string;
-    }>(
-      `SELECT id, section_id, quantity, quantity_max, unit, name, note
-       FROM ingredients WHERE recipe_id = ? ORDER BY position`,
-      [id],
-    ),
-    db.query<{ id: string; text: string }>(
-      'SELECT id, text FROM steps WHERE recipe_id = ? ORDER BY position',
-      [id],
-    ),
-    db.query<{ name: string }>(
-      'SELECT t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_id = ? ORDER BY t.name',
-      [id],
-    ),
-  ]);
+interface SectionRow {
+  id: string;
+  recipe_id: string;
+  name: string;
+}
+interface IngredientRow {
+  id: string;
+  recipe_id: string;
+  section_id: string | null;
+  quantity: number | null;
+  quantity_max: number | null;
+  unit: string;
+  name: string;
+  note: string;
+}
+interface StepRow {
+  id: string;
+  recipe_id: string;
+  text: string;
+}
+interface TagRow {
+  recipe_id: string;
+  name: string;
+}
+
+/** Builds a recipe from its rows (children in position order). */
+function assembleRecipe(
+  row: RecipeRow,
+  sections: SectionRow[],
+  ingredients: IngredientRow[],
+  steps: StepRow[],
+  tags: TagRow[],
+): Recipe {
   const secs = sections.map((s) => ({
     id: s.id,
     name: s.name,
     items: [] as Recipe['sections'][number]['items'],
   }));
-  if (secs.length === 0) secs.push({ id: `${id}-default`, name: '', items: [] });
+  if (secs.length === 0) secs.push({ id: `${row.id}-default`, name: '', items: [] });
   const byId = new Map(secs.map((s) => [s.id, s]));
   for (const i of ingredients) {
     const target = (i.section_id && byId.get(i.section_id)) || secs[0]!;
@@ -122,6 +125,55 @@ export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
     sections: secs,
     steps: steps.map((s) => ({ id: s.id, text: s.text })),
   };
+}
+
+const CHILD_QUERIES = {
+  sections: 'SELECT id, recipe_id, name FROM ingredient_sections',
+  ingredients: 'SELECT id, recipe_id, section_id, quantity, quantity_max, unit, name, note FROM ingredients',
+  steps: 'SELECT id, recipe_id, text FROM steps',
+  tags: 'SELECT rt.recipe_id, t.name FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id',
+};
+
+export async function getRecipe(db: Sql, id: Id): Promise<Recipe | null> {
+  const [row] = await db.query<RecipeRow>('SELECT * FROM recipes WHERE id = ?', [id]);
+  if (!row) return null;
+  const [sections, ingredients, steps, tags] = await Promise.all([
+    db.query<SectionRow>(`${CHILD_QUERIES.sections} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<IngredientRow>(`${CHILD_QUERIES.ingredients} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<StepRow>(`${CHILD_QUERIES.steps} WHERE recipe_id = ? ORDER BY position`, [id]),
+    db.query<TagRow>(`${CHILD_QUERIES.tags} WHERE rt.recipe_id = ? ORDER BY t.name`, [id]),
+  ]);
+  return assembleRecipe(row, sections, ingredients, steps, tags);
+}
+
+/** Every recipe with its children, oldest first, in five queries (backups). */
+export async function listFullRecipes(db: Sql): Promise<Recipe[]> {
+  const [rows, sections, ingredients, steps, tags] = await Promise.all([
+    db.query<RecipeRow>('SELECT * FROM recipes ORDER BY created_at'),
+    db.query<SectionRow>(`${CHILD_QUERIES.sections} ORDER BY recipe_id, position`),
+    db.query<IngredientRow>(`${CHILD_QUERIES.ingredients} ORDER BY recipe_id, position`),
+    db.query<StepRow>(`${CHILD_QUERIES.steps} ORDER BY recipe_id, position`),
+    db.query<TagRow>(`${CHILD_QUERIES.tags} ORDER BY rt.recipe_id, t.name`),
+  ]);
+  const group = <T extends { recipe_id: string }>(list: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of list) {
+      const arr = m.get(x.recipe_id);
+      if (arr) arr.push(x);
+      else m.set(x.recipe_id, [x]);
+    }
+    return m;
+  };
+  const [secBy, ingBy, stepBy, tagBy] = [group(sections), group(ingredients), group(steps), group(tags)];
+  return rows.map((r) =>
+    assembleRecipe(
+      r,
+      secBy.get(r.id) ?? [],
+      ingBy.get(r.id) ?? [],
+      stepBy.get(r.id) ?? [],
+      tagBy.get(r.id) ?? [],
+    ),
+  );
 }
 
 /**

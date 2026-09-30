@@ -37,9 +37,14 @@ function useImmersive(keepOn: boolean) {
   }, [keepOn]);
 }
 
-function TimerCard({ timer, now }: { timer: Timer; now: number }) {
+/** A running timer: it ticks by itself, so the rest of the cooking screen does not re-render. */
+function TimerCard({ timer }: { timer: Timer }) {
   const t = useT();
-  const { pause, resume, addTime, remove } = useTimers();
+  const pause = useTimers((s) => s.pause);
+  const resume = useTimers((s) => s.resume);
+  const addTime = useTimers((s) => s.addTime);
+  const remove = useTimers((s) => s.remove);
+  const now = useNow(250, !!timer.endAt && !timer.done);
   const rem = remainingMs(timer, now);
   const progress = timer.durationSec > 0 ? 1 - rem / (timer.durationSec * 1000) : 1;
   return (
@@ -100,7 +105,6 @@ export default function CookingPage() {
   const allTimers = useTimers((s) => s.timers);
   const startTimer = useTimers((s) => s.start);
   const timers = allTimers.filter((x) => x.recipeId === id);
-  const now = useNow(250, timers.length > 0);
   const exactAlarm = useExactAlarmAccess(() => void rescheduleRunningTimers());
 
   useImmersive(keepOn);
@@ -265,7 +269,7 @@ export default function CookingPage() {
       <div className="cook-timers">
         <AnimatePresence>
           {timers.map((x) => (
-            <TimerCard key={x.id} timer={x} now={now} />
+            <TimerCard key={x.id} timer={x} />
           ))}
         </AnimatePresence>
       </div>
