@@ -1,5 +1,5 @@
 import type { IngredientData } from '@/db/types';
-import { resolveUnit } from '@/config/units';
+import { getUnit, resolveUnit } from '@/config/units';
 
 const UNICODE_FRACTIONS: Record<string, number> = {
   '½': 0.5,
@@ -23,6 +23,9 @@ const RANGE_SEP_RE = /^\s*(?:à|a|to|-|–)\s*/i;
 const ARTICLE_RE = /^\s*(?:des|du|de)\s+/i;
 const ELISION_ARTICLE_RE = /^\s*d['’]\s*/i;
 const BULLET_RE = /^[-•*]\s+/;
+/** Ingredient names that start with a unit word: "bouquet garni" is not a bunch of "garni". */
+const NAME_STARTING_WITH_UNIT_RE =
+  /^(?:bouquets?\s+garnis?|noix\s+de\s+(?:coco|cajou|p[ée]can|macadamia|muscade|saint[- ]jacques|st[- ]jacques)|feuilles?\s+de\s+brick)\b/i;
 const TRAILING_PUNCT_RE = /[,;:)\]]+$/;
 
 interface LeadingNumber {
@@ -130,7 +133,16 @@ export function parseIngredientLine(line: string): IngredientData {
   }
 
   const rest = text.slice(cursor);
-  const unitMatch = matchUnit(rest);
+  let unitMatch = NAME_STARTING_WITH_UNIT_RE.test(rest.trim()) ? null : matchUnit(rest);
+  // "10 noix", "3 gousses": a countable unit word with nothing after it is the ingredient itself
+  // (a measure alone, "250 g", stays a measure).
+  if (
+    unitMatch &&
+    getUnit(unitMatch.key)?.kind === 'count' &&
+    !rest.slice(unitMatch.consumed).replace(/[\s,;.:]+/g, '')
+  ) {
+    unitMatch = null;
+  }
   const unit = unitMatch?.key ?? '';
   let working = unitMatch ? rest.slice(unitMatch.consumed) : rest;
 

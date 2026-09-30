@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseHumanDuration, parseIsoDuration } from '@/import/duration';
+import { parseDuration, parseHumanDuration, parseIsoDuration } from '@/import/duration';
 
 describe('parseIsoDuration', () => {
   it('parses hours and minutes', () => {
@@ -20,6 +20,13 @@ describe('parseIsoDuration', () => {
 
   it('parses days', () => {
     expect(parseIsoDuration('P1DT2H')).toBe(24 * 60 + 120);
+  });
+
+  it('parses the long form with years, months and fractional seconds', () => {
+    expect(parseIsoDuration('P0Y0M0DT0H20M0.000S')).toBe(20);
+    expect(parseIsoDuration('P0Y0M0DT1H5M')).toBe(65);
+    expect(parseIsoDuration('pt45m')).toBe(45);
+    expect(parseIsoDuration('P1W')).toBe(7 * 24 * 60);
   });
 
   it('returns null for invalid input', () => {
@@ -61,5 +68,17 @@ describe('parseHumanDuration', () => {
   it('returns null for empty or unparseable input', () => {
     expect(parseHumanDuration('')).toBeNull();
     expect(parseHumanDuration('quelques minutes')).toBeNull();
+  });
+});
+
+describe('parseDuration', () => {
+  it('accepts ISO, human text and numbers of minutes', () => {
+    expect(parseDuration('PT20M')).toBe(20);
+    expect(parseDuration('20 min')).toBe(20);
+    expect(parseDuration('1 h 30')).toBe(90);
+    expect(parseDuration(25)).toBe(25);
+    expect(parseDuration('')).toBeNull();
+    expect(parseDuration(null)).toBeNull();
+    expect(parseDuration({})).toBeNull();
   });
 });

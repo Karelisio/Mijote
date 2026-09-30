@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeSourceUrl, safeHttpUrl } from '@/lib/url';
-import { emptyState, recipeFromState } from '@/features/recipes/editorModel';
+import { emptyState, ingredientFromText, recipeFromState } from '@/features/recipes/editorModel';
 
 describe('safeHttpUrl', () => {
   it('keeps absolute http(s) URLs', () => {
@@ -41,6 +41,14 @@ describe('normalizeSourceUrl', () => {
     expect(normalizeSourceUrl('JAVASCRIPT://%0aalert(1)')).toBeNull();
     expect(normalizeSourceUrl('Livre de Mamie')).toBeNull();
     expect(normalizeSourceUrl('   ')).toBeNull();
+  });
+
+  it('keeps an ingredient line the parser could not name when the editor saves', () => {
+    const state = emptyState();
+    state.title = 'Tarte';
+    state.sections[0]!.items = [ingredientFromText('250 g'), ingredientFromText('10 noix')];
+    const saved = recipeFromState(state, null).sections[0]!.items;
+    expect(saved.map((i) => i.name)).toEqual(['250 g', 'noix']);
   });
 
   it('is applied when the editor saves', () => {

@@ -25,7 +25,9 @@ export default function ImportPage() {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<TKey | null>(null);
-  const handledShare = useRef(false);
+  // The share being handled: a new share while the page is open (e.g. after a network error) is
+  // a new object and is analysed too; StrictMode's second effect run sees the same one.
+  const handledShare = useRef<object | null>(null);
 
   /** Pastes the clipboard into a field, or says why nothing was pasted. */
   const paste = async (apply: (text: string) => void) => {
@@ -51,8 +53,15 @@ export default function ImportPage() {
     try {
       done(await importFromUrl(target));
     } catch (e) {
+      const code = e instanceof Error ? e.message : '';
       setError(
-        e instanceof Error && e.message === 'no_recipe' ? 'import.errorNoRecipe' : 'import.errorNetwork',
+        code === 'no_recipe'
+          ? 'import.errorNoRecipe'
+          : code === 'insecure_http'
+            ? 'import.errorInsecure'
+            : code === 'timeout'
+              ? 'import.errorTimeout'
+              : 'import.errorNetwork',
       );
     } finally {
       setLoading(false);
@@ -74,9 +83,10 @@ export default function ImportPage() {
 
   // Content shared from another app: a link is fetched, anything else is parsed as text.
   useEffect(() => {
-    if (!shared || handledShare.current) return;
-    handledShare.current = true;
+    if (!shared || handledShare.current === shared) return;
+    handledShare.current = shared;
     setShared(null);
+    setError(null);
     const link = normalizeUrl(shared.text);
     const rest = link ? shared.text.replace(link, '').trim() : shared.text;
     if (link && rest.length < 200) {

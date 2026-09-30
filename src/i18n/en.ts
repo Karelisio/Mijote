@@ -183,6 +183,9 @@ export const en: Dict = {
     loading: 'Reading the recipe…',
     errorNetwork: 'Could not load the page. Check your connection.',
     errorNoRecipe: 'No recipe found on this page. Try pasting the text instead.',
+    errorInsecure:
+      'This site is not secure (http) and Android refuses to load it. Copy the recipe text and paste it in the Text tab.',
+    errorTimeout: 'The site is taking too long to answer. Try again later.',
     errorEmpty: 'Nothing to analyse yet.',
     reviewTitle: 'Review the recipe',
     reviewHint: 'Check and fix before saving.',

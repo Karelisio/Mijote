@@ -278,3 +278,52 @@ describe('extractHeuristics — generic blog pages', () => {
     expect(r?.steps).toEqual(['Rôtir 1 h.']);
   });
 });
+
+describe('extractJsonLd — durations and instructions', () => {
+  const page = (recipe: Record<string, unknown>) =>
+    parseRecipeHtml(
+      `<html><head><script type="application/ld+json">${JSON.stringify({
+        '@type': 'Recipe',
+        name: 'Soupe',
+        recipeIngredient: ['2 carottes'],
+        ...recipe,
+      })}</script></head><body></body></html>`,
+      'https://example.com/soupe',
+    );
+
+  it('reads long ISO forms, text durations and a lone total time', () => {
+    expect(page({ prepTime: 'P0Y0M0DT0H20M0.000S', cookTime: 'PT1H' })).toMatchObject({
+      prepMinutes: 20,
+      cookMinutes: 60,
+    });
+    expect(page({ prepTime: '20 min', cookTime: '1 h 10' })).toMatchObject({
+      prepMinutes: 20,
+      cookMinutes: 70,
+    });
+    expect(page({ totalTime: 'PT45M' })).toMatchObject({ prepMinutes: 45, cookMinutes: null });
+  });
+
+  it('splits HTML instructions written on a single line', () => {
+    expect(page({ recipeInstructions: '<p>Éplucher.</p><p>Cuire 20 min.</p>' })?.steps).toEqual([
+      'Éplucher.',
+      'Cuire 20 min.',
+    ]);
+    expect(page({ recipeInstructions: 'Éplucher.<br>Couper.<br/>Cuire.' })?.steps).toEqual([
+      'Éplucher.',
+      'Couper.',
+      'Cuire.',
+    ]);
+    expect(page({ recipeInstructions: '<ol><li>Éplucher.</li><li>Cuire.</li></ol>' })?.steps).toEqual([
+      'Éplucher.',
+      'Cuire.',
+    ]);
+    expect(
+      page({ recipeInstructions: '&lt;p&gt;Éplucher.&lt;/p&gt;&lt;p&gt;Cuire.&lt;/p&gt;' })?.steps,
+    ).toEqual(['Éplucher.', 'Cuire.']);
+    // One HowToStep stays one step.
+    expect(
+      page({ recipeInstructions: [{ '@type': 'HowToStep', text: '<p>Éplucher.</p><p>Puis couper.</p>' }] })
+        ?.steps,
+    ).toEqual(['Éplucher. Puis couper.']);
+  });
+});

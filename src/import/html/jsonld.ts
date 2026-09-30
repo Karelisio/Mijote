@@ -1,5 +1,5 @@
 import type { ImportedRecipe } from '@/db/types';
-import { parseIsoDuration } from '../duration';
+import { parseDuration } from '../duration';
 import { mapCategory } from '../category';
 import {
   allStrings,
@@ -93,26 +93,30 @@ function nodeTypeString(v: unknown): string {
   return '';
 }
 
+/** Splits an instructions string, often HTML on a single line ("<p>…</p><p>…</p>", "…<br>…"). */
+function splitInstructionText(doc: Document, raw: string): string[] {
+  const lines = decodeEntities(doc, raw)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(?:p|li|ol|ul|div|h[1-6])\b[^>]*>/gi, '\n')
+    .split(/\r?\n+/)
+    .map((s) =>
+      stripHtml(s)
+        .replace(/^\d+[.)]\s*/, '')
+        .trim(),
+    )
+    .filter(Boolean);
+  if (lines.length !== 1) return lines;
+  const text = lines[0]!;
+  const numbered = text
+    .split(/(?=\d+[.)]\s)/)
+    .map((s) => s.replace(/^\d+[.)]\s*/, '').trim())
+    .filter(Boolean);
+  return numbered.length > 1 ? numbered : [text];
+}
+
 /** Flattens recipeInstructions: a string, HowToStep[], HowToSection[], or nested itemListElement. */
 function extractSteps(doc: Document, v: unknown): string[] {
-  if (typeof v === 'string') {
-    const text = stripHtml(decodeEntities(doc, v));
-    const byLine = v
-      .split(/\r?\n+/)
-      .map((s) =>
-        stripHtml(decodeEntities(doc, s))
-          .replace(/^\d+[.)]\s*/, '')
-          .trim(),
-      )
-      .filter(Boolean);
-    if (byLine.length > 1) return byLine;
-    const numbered = text
-      .split(/(?=\d+[.)]\s)/)
-      .map((s) => s.replace(/^\d+[.)]\s*/, '').trim())
-      .filter(Boolean);
-    if (numbered.length > 1) return numbered;
-    return text ? [text] : [];
-  }
+  if (typeof v === 'string') return splitInstructionText(doc, v);
   if (Array.isArray(v)) return v.flatMap((item) => extractSteps(doc, item));
   if (isRecord(v)) {
     const type = nodeTypeString(v).toLowerCase();
@@ -129,18 +133,17 @@ function extractSteps(doc: Document, v: unknown): string[] {
 }
 
 function extractDurations(node: JsonRecord): { prepMinutes: number | null; cookMinutes: number | null } {
-  const prepIso = firstString(node['prepTime']);
-  const cookIso = firstString(node['cookTime']);
-  const totalIso = firstString(node['totalTime']);
-
-  let prepMinutes = prepIso ? parseIsoDuration(prepIso) : null;
-  let cookMinutes = cookIso ? parseIsoDuration(cookIso) : null;
-  const totalMinutes = totalIso ? parseIsoDuration(totalIso) : null;
+  const first = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+  let prepMinutes = parseDuration(first(node['prepTime']));
+  let cookMinutes = parseDuration(first(node['cookTime']));
+  const totalMinutes = parseDuration(first(node['totalTime']));
 
   if (totalMinutes !== null) {
     if (prepMinutes === null && cookMinutes !== null) prepMinutes = Math.max(0, totalMinutes - cookMinutes);
     else if (cookMinutes === null && prepMinutes !== null)
       cookMinutes = Math.max(0, totalMinutes - prepMinutes);
+    // Only a total: kept as the preparation time, the recipe's total stays right.
+    else if (prepMinutes === null && cookMinutes === null) prepMinutes = totalMinutes;
   }
   return { prepMinutes, cookMinutes };
 }

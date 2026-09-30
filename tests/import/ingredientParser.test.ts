@@ -336,3 +336,38 @@ describe('quantity round trip (display → parse)', () => {
     }
   });
 });
+
+describe('parseIngredientLine — unit words that are the ingredient', () => {
+  it('keeps "10 noix" as ten walnuts instead of a unit without name', () => {
+    expect(parseIngredientLine('10 noix')).toEqual({
+      quantity: 10,
+      quantityMax: null,
+      unit: '',
+      name: 'noix',
+      note: '',
+    });
+    expect(parseIngredientLine('3 gousses')).toMatchObject({ quantity: 3, unit: '', name: 'gousses' });
+  });
+
+  it('reads names that start with a unit word', () => {
+    expect(parseIngredientLine('1 bouquet garni')).toMatchObject({
+      quantity: 1,
+      unit: '',
+      name: 'bouquet garni',
+    });
+    expect(parseIngredientLine('2 noix de coco râpées')).toMatchObject({
+      unit: '',
+      name: 'noix de coco râpées',
+    });
+    expect(parseIngredientLine('12 noix de Saint-Jacques')).toMatchObject({
+      unit: '',
+      name: 'noix de Saint-Jacques',
+    });
+  });
+
+  it('still reads real units', () => {
+    expect(parseIngredientLine('1 noix de beurre')).toMatchObject({ unit: 'knob', name: 'beurre' });
+    expect(parseIngredientLine('1 bouquet de persil')).toMatchObject({ unit: 'bunch', name: 'persil' });
+    expect(parseIngredientLine('2 gousses d’ail')).toMatchObject({ unit: 'clove', name: 'ail' });
+  });
+});

@@ -182,6 +182,9 @@ export const fr = {
     loading: 'Lecture de la recette…',
     errorNetwork: 'Impossible de charger la page. Vérifiez votre connexion.',
     errorNoRecipe: 'Aucune recette trouvée sur cette page. Essayez de coller le texte.',
+    errorInsecure:
+      'Ce site n’est pas sécurisé (http) et Android refuse de le charger. Copiez le texte de la recette et collez-le dans l’onglet Texte.',
+    errorTimeout: 'Le site met trop de temps à répondre. Réessayez plus tard.',
     errorEmpty: 'Rien à analyser pour l’instant.',
     reviewTitle: 'Vérifier la recette',
     reviewHint: 'Relisez et corrigez avant d’enregistrer.',
