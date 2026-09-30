@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteRecipe,
   getRecipe,
-  listAllTags,
   listRecipeSummaries,
   markCooked,
   saveRecipe,
@@ -32,7 +31,8 @@ describe('recipes repository', () => {
     await saveRecipe(db, { ...crepes!, tags: ['dessert'], steps: crepes!.steps.slice(0, 1) });
     const loaded = await getRecipe(db, crepes!.id);
     expect(loaded?.steps).toHaveLength(1);
-    expect(await listAllTags(db)).toEqual(['dessert']);
+    const tags = await db.query<{ name: string }>('SELECT name FROM tags ORDER BY name');
+    expect(tags.map((t) => t.name)).toEqual(['dessert']);
   });
 
   it('searches titles, ingredients and tags ignoring accents', async () => {

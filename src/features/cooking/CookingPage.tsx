@@ -61,11 +61,21 @@ function TimerCard({ timer, now }: { timer: Timer; now: number }) {
         </div>
         {!timer.done &&
           (timer.endAt ? (
-            <IconButton icon="pause" label="Pause" small onClick={() => pause(timer.id)} />
+            <IconButton icon="pause" label={t('cooking.pause')} small onClick={() => pause(timer.id)} />
           ) : (
-            <IconButton icon="play_arrow" label="Play" small onClick={() => resume(timer.id)} />
+            <IconButton
+              icon="play_arrow"
+              label={t('cooking.resume')}
+              small
+              onClick={() => resume(timer.id)}
+            />
           ))}
-        <button type="button" className="cook-timer-plus ripple" onClick={() => addTime(timer.id, 60)}>
+        <button
+          type="button"
+          className="cook-timer-plus ripple"
+          aria-label={t('cooking.addMinute')}
+          onClick={() => addTime(timer.id, 60)}
+        >
           +1
         </button>
         <IconButton icon="close" label={t('common.close')} small onClick={() => remove(timer.id)} />

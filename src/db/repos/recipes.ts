@@ -328,11 +328,6 @@ export async function searchRecipeIds(db: Sql, input: string): Promise<Id[]> {
   return rows.map((r) => r.id);
 }
 
-export async function listAllTags(db: Sql): Promise<string[]> {
-  const rows = await db.query<{ name: string }>('SELECT name FROM tags ORDER BY name');
-  return rows.map((r) => r.name);
-}
-
 export async function listPhotoPaths(db: Sql): Promise<string[]> {
   const rows = await db.query<{ photo: string }>('SELECT photo FROM recipes WHERE photo IS NOT NULL');
   return rows.map((r) => r.photo);

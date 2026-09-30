@@ -16,7 +16,7 @@ function useSystemDark(): boolean {
 }
 
 /** Applies the Material 3 palette (dynamic or seed) and system bar styles. */
-export function useThemeController(): { dynamicAvailable: boolean } {
+export function useThemeController(): void {
   const theme = useSettings((s) => s.theme);
   const dynamicColor = useSettings((s) => s.dynamicColor);
   const seedColor = useSettings((s) => s.seedColor);
@@ -44,6 +44,4 @@ export function useThemeController(): { dynamicAvailable: boolean } {
       );
     }
   }, [seed, dark]);
-
-  return { dynamicAvailable: dynamicSeed !== null };
 }

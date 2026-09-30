@@ -87,10 +87,6 @@ export function formatQuantity(q: number, lang: 'fr' | 'en', unit = ''): string 
   return lang === 'fr' ? s.replace('.', ',') : s;
 }
 
-export interface ScaledIngredient extends IngredientData {
-  display: string;
-}
-
 export function scaleIngredient(i: IngredientData, factor: number): IngredientData {
   const quantity = scaleQuantity(i.quantity, factor, i.unit);
   const quantityMax = scaleQuantity(i.quantityMax, factor, i.unit);

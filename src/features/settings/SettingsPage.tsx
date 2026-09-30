@@ -13,6 +13,7 @@ import { SEED_PRESETS } from '@/theme/palette';
 import { getDynamicSeed, isNative } from '@/platform/native';
 import { useUpdate } from '@/features/update/update';
 import { useExactAlarmAccess } from '@/features/cooking/exactAlarm';
+import { formatMegabytes } from '@/features/recipes/format';
 import { rescheduleRunningTimers } from '@/features/cooking/timers';
 import { seedSampleRecipes } from '@/db/seed';
 import { db, refreshRecipes } from '@/store/recipes';
@@ -329,8 +330,8 @@ export default function SettingsPage() {
             headline={b.kind === 'safety' ? t('settings.safetyBackup') : fmtDate(b.date)}
             supporting={
               b.kind === 'safety'
-                ? `${fmtDate(b.date)} · ${(b.size / 1024 / 1024).toFixed(1)} Mo`
-                : `${(b.size / 1024 / 1024).toFixed(1)} Mo`
+                ? `${fmtDate(b.date)} · ${formatMegabytes(b.size, lang)}`
+                : formatMegabytes(b.size, lang)
             }
             onClick={() => setPendingRestore(b)}
             trailing={<span className="label-large primary-text">{t('settings.restore')}</span>}

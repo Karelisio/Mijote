@@ -4,6 +4,12 @@ import type { Lang } from '@/i18n';
 import { translate } from '@/i18n';
 import { formatQuantity, scaleIngredient } from './portions';
 
+/** "1,4 Mo" / "1.4 MB". */
+export function formatMegabytes(bytes: number, lang: Lang): string {
+  const size = (bytes / 1024 / 1024).toFixed(1);
+  return translate(lang, 'common.megabytes', { size: lang === 'fr' ? size.replace('.', ',') : size });
+}
+
 /** "250 g", "2–3", "1 ½ c. à soupe", "" */
 export function formatAmount(
   i: Pick<IngredientData, 'quantity' | 'quantityMax' | 'unit'>,

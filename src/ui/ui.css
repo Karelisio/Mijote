@@ -173,9 +173,6 @@
     0 3px 5px -1px rgb(0 0 0 / 0.14),
     0 6px 10px 0 rgb(0 0 0 / 0.1);
 }
-.fab.no-nav {
-  bottom: calc(var(--safe-bottom) + 16px);
-}
 .fab-label {
   white-space: nowrap;
   overflow: hidden;

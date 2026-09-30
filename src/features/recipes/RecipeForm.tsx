@@ -106,7 +106,7 @@ function StepEditItem({
         <span
           className="drag-handle"
           onPointerDown={(e) => controls.start(e)}
-          aria-label={t('editor.moveDown')}
+          aria-label={t('editor.reorder')}
         >
           <Icon name="drag_indicator" />
         </span>
@@ -151,7 +151,12 @@ export function RecipeForm({ state: s, onChange, titleError }: Props) {
 
   return (
     <div className="form">
-      <button type="button" className="form-photo ripple" onClick={() => setPhotoSheet(true)}>
+      <button
+        type="button"
+        className="form-photo ripple"
+        aria-label={s.photo ? t('editor.changePhoto') : t('editor.photo')}
+        onClick={() => setPhotoSheet(true)}
+      >
         {s.photo ? (
           <RecipeImage path={s.photo} category={s.category} alt="" />
         ) : (

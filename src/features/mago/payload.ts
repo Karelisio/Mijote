@@ -57,14 +57,3 @@ export function buildMagoPayload(
 export function buildMagoUrl(payload: MagoPayload): string {
   return `${MAGO_IMPORT_URL}?data=${encodeBase64Url(JSON.stringify(payload))}`;
 }
-
-export function parseMagoUrl(url: string): MagoPayload | null {
-  try {
-    const data = new URL(url).searchParams.get('data');
-    if (!data) return null;
-    const v = JSON.parse(decodeBase64Url(data)) as MagoPayload;
-    return v.version === 1 && Array.isArray(v.items) ? v : null;
-  } catch {
-    return null;
-  }
-}

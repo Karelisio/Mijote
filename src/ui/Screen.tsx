@@ -20,23 +20,9 @@ interface Props {
   /** Hero content drawn under a transparent app bar (detail screens). */
   hero?: ReactNode;
   children: ReactNode;
-  bottom?: ReactNode;
-  className?: string;
 }
 
-export function Screen({
-  title,
-  large,
-  back,
-  actions,
-  withNav,
-  fab,
-  scrollKey,
-  hero,
-  children,
-  bottom,
-  className,
-}: Props) {
+export function Screen({ title, large, back, actions, withNav, fab, scrollKey, hero, children }: Props) {
   const t = useT();
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
@@ -85,7 +71,7 @@ export function Screen({
     .join(' ');
 
   return (
-    <div className={`screen${withNav ? ' with-nav' : ''}${className ? ` ${className}` : ''}`}>
+    <div className={`screen${withNav ? ' with-nav' : ''}`}>
       <header
         className={barCls}
         style={hero ? { position: 'absolute', left: 0, right: 0, top: 0 } : undefined}
@@ -118,7 +104,6 @@ export function Screen({
         )}
         {children}
       </div>
-      {bottom}
       {fab?.(extended)}
     </div>
   );
