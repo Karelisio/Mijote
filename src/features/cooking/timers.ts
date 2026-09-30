@@ -5,6 +5,7 @@ import { Haptics } from '@capacitor/haptics';
 import { Preferences } from '@capacitor/preferences';
 import { isNative } from '@/platform/native';
 import { t } from '@/i18n';
+import { snackbar } from '@/store/snackbar';
 import { canScheduleExactAlarms } from './exactAlarm';
 
 export interface Timer {
@@ -32,13 +33,21 @@ interface TimersState {
 
 export const TIMER_CHANNEL = 'timers';
 let channelReady = false;
+let deniedNoticeShown = false;
 
 async function ensureChannel(): Promise<boolean> {
   if (!isNative()) return false;
   try {
     let perm = await LocalNotifications.checkPermissions();
     if (perm.display !== 'granted') perm = await LocalNotifications.requestPermissions();
-    if (perm.display !== 'granted') return false;
+    if (perm.display !== 'granted') {
+      // Timers still ring while Mijote is open: say once that they will not in the background.
+      if (!deniedNoticeShown) {
+        deniedNoticeShown = true;
+        snackbar(t('cooking.notificationsDenied'), { duration: 6000 });
+      }
+      return false;
+    }
     if (!channelReady) {
       await LocalNotifications.createChannel({
         id: TIMER_CHANNEL,

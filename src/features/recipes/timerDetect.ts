@@ -9,9 +9,22 @@ export interface DetectedTimer {
   label: string;
 }
 
-// Matches "20 min", "1 h 30", "1h30", "2 heures", "1 à 2 min", "20-25 minutes", "30 s", "1 hour 15 minutes".
-const RE =
-  /(\d+(?:[.,]\d+)?)(?:\s*(?:à|a|-|–|to|ou|or)\s*(\d+(?:[.,]\d+)?))?\s*(heures?|hours?|hrs?|h|minutes?|mins?|mn|m(?![a-z])|secondes?|seconds?|secs?|s(?![a-z]))(?:\s*(?:et\s*|and\s*)?(\d{1,2})\s*(?:minutes?|mins?|mn|m(?![a-z]))?)?/gi;
+const NUM = String.raw`\d+(?:[.,]\d+)?`;
+const HOURS = String.raw`heures?|hours?|hrs?|h`;
+const MINUTES = String.raw`minutes?|mins?|mn|m`;
+const SECONDS = String.raw`secondes?|seconds?|secs?|s`;
+const NOT_A_WORD = String.raw`(?![a-zà-ÿ])`;
+
+// "20 min", "2 heures", "30 s", "1 à 2 min", "20-25 minutes"…
+const MAIN_RE = new RegExp(
+  String.raw`(${NUM})(?:\s*(?:à|a|-|–|to|ou|or)\s*(${NUM}))?\s*(${HOURS}|${MINUTES}|${SECONDS})${NOT_A_WORD}`,
+  'gi',
+);
+// …and its optional second part right after: "1 h 30", "1h30", "1 hour 15 minutes", "1 min 30 s".
+const EXTRA_RE = new RegExp(
+  String.raw`\s*(?:(?:et|and)\s*)?(\d{1,2})(?!\d)\s*(${MINUTES}|${SECONDS})?${NOT_A_WORD}`,
+  'iy',
+);
 
 function unitSeconds(u: string): number {
   const n = normalizeText(u);
@@ -20,23 +33,50 @@ function unitSeconds(u: string): number {
   return 60;
 }
 
+/**
+ * Seconds added by the second part, or null when it is not part of the duration: a bare number
+ * is minutes after hours ("1 h 30") unless it counts or measures something, and seconds after
+ * minutes only at the end of a phrase ("1 min 30."), never "5 minutes 2 fois".
+ */
+function extraSeconds(main: number, n: number, unit: string | undefined, after: string): number | null {
+  if (n > 59) return null;
+  if (unit) {
+    const u = unitSeconds(unit);
+    if (main === 3600 && u === 60) return n * 60;
+    if (main === 60 && u === 1) return n;
+    return null;
+  }
+  if (main === 3600) {
+    return /^\s*(?:°|%|fois\b|x\b|times\b|[kmcd]?[gl]\b|pers)/i.test(after) ? null : n * 60;
+  }
+  if (main === 60) return /^\s*(?:[.,;:!?)]|$)/.test(after) ? n : null;
+  return null;
+}
+
 /** Finds cooking durations in a step so they can become one-tap timers. */
 export function detectTimers(text: string): DetectedTimer[] {
   const out: DetectedTimer[] = [];
-  for (const m of text.matchAll(RE)) {
-    const [full, a, , unit, extraMin] = m;
-    if (!a || !unit) continue;
+  let lastEnd = 0;
+  for (const m of text.matchAll(MAIN_RE)) {
+    const [main, a, , unit] = m;
     const idx = m.index ?? 0;
-    // Skip things like "180 °C" or "4 personnes": only time units reach here, but avoid "3 s" in "3 sachets".
-    const end = idx + full.trimEnd().length;
-    if (/[a-zà-ÿ]/i.test(text.charAt(end))) continue;
+    if (!a || !unit || idx < lastEnd) continue;
+    const perUnit = unitSeconds(unit);
     // The lower bound of a range is the safest timer ("20 à 25 min" → check at 20).
-    let seconds = parseFloat(a.replace(',', '.')) * unitSeconds(unit);
-    const isHour = unitSeconds(unit) === 3600;
-    if (isHour && extraMin) seconds += parseInt(extraMin, 10) * 60;
-    else if (!isHour && extraMin) continue;
+    let seconds = parseFloat(a.replace(',', '.')) * perUnit;
+    let end = idx + main.length;
+    EXTRA_RE.lastIndex = end;
+    const x = EXTRA_RE.exec(text);
+    if (x?.[1]) {
+      const extra = extraSeconds(perUnit, parseInt(x[1], 10), x[2], text.slice(EXTRA_RE.lastIndex));
+      if (extra !== null) {
+        seconds += extra;
+        end = EXTRA_RE.lastIndex;
+      }
+    }
     if (seconds < 5 || seconds > 48 * 3600) continue;
-    out.push({ start: idx, end, seconds: Math.round(seconds), label: full.trim() });
+    lastEnd = end;
+    out.push({ start: idx, end, seconds: Math.round(seconds), label: text.slice(idx, end).trim() });
   }
   return out;
 }

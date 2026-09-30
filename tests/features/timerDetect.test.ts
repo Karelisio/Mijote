@@ -27,6 +27,21 @@ describe('detectTimers', () => {
     expect(secs('Pour 4 personnes, 2 mangues')).toEqual([]);
     expect(secs('Ajoutez 2 huîtres')).toEqual([]);
   });
+  it('reads "1 min 30 s" and "1 min 30." as 90 seconds', () => {
+    expect(secs('Cuire 1 min 30 s')).toEqual([90]);
+    expect(secs('Cuire 1 min 30.')).toEqual([90]);
+    expect(secs('Cuire 1 heure et 30 minutes')).toEqual([5400]);
+    expect(detectTimers('Cuire 1 min 30 s de chaque côté')[0]?.label).toBe('1 min 30 s');
+  });
+  it('does not glue a count or a temperature to the duration', () => {
+    expect(secs('Pétrir 5 minutes 2 fois')).toEqual([300]);
+    expect(detectTimers('Pétrir 5 minutes 2 fois')[0]?.label).toBe('5 minutes');
+    expect(secs('Enfourner 25 min 180°C')).toEqual([1500]);
+    expect(secs('Laisser reposer 2 h 180°C')).toEqual([7200]);
+    expect(secs('Laisser lever 1 h 2 fois')).toEqual([3600]);
+    expect(secs('Cuire 1 min 30 de chaque côté')).toEqual([60]);
+    expect(secs('Cuire 20 min, 180 °C, puis 5 min')).toEqual([1200, 300]);
+  });
   it('returns the label as written and its position', () => {
     const [d] = detectTimers('Cuire 20 min.');
     expect(d?.label).toBe('20 min');
