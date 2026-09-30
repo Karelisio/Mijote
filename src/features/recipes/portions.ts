@@ -10,9 +10,16 @@ const FRACTIONS: [number, string][] = [
   [0.75, '¾'],
 ];
 
+const clean = (n: number): number => Math.round(n * 1e6) / 1e6;
+
+/** Rounding step for a metric amount in g or ml: 1,5 g, 12 g, 125 g, 330 g, 1,65 kg. */
+function metricStep(base: number): number {
+  return base < 1 ? 0.1 : base < 10 ? 0.5 : base < 25 ? 1 : base < 250 ? 5 : base < 1000 ? 10 : 50;
+}
+
 /**
  * Rounds a scaled quantity to something a cook would actually measure:
- * - metric mass/volume: 2 significant-ish steps (1 g under 10, 5 g under 100, 10 g under 1000…)
+ * - metric mass/volume: rounded in g / ml whatever the unit (0,25 kg stays 250 g, not 0,3 kg)
  * - spoons/cups & free units: nearest ¼ (or ⅓ when closer)
  * - countable items (eggs, cloves…): nearest ½ below 3, whole numbers above
  */
@@ -20,9 +27,10 @@ export function roundSmart(value: number, unit: string): number {
   if (value <= 0) return 0;
   const def = getUnit(unit);
   const family = def?.rounding ?? (unit ? 'spoon' : 'whole');
-  if (family === 'metric') {
-    const step = value < 10 ? (value < 1 ? 0.1 : 1) : value < 100 ? 5 : value < 1000 ? 10 : 50;
-    return Math.max(step, Math.round(value / step) * step);
+  if (family === 'metric' && def) {
+    const base = value * def.base;
+    const step = metricStep(base);
+    return clean(Math.max(step, Math.round(base / step) * step) / def.base);
   }
   if (family === 'whole' && value >= 3) return Math.round(value);
   if (family === 'whole') {
@@ -51,12 +59,16 @@ export function scaleQuantity(q: number | null, factor: number, unit: string): n
   return roundSmart(q * factor, unit);
 }
 
-/** Converts big metric amounts to the larger unit (1500 g → 1.5 kg). */
-export function normalizeMetric(q: number, unit: string): { q: number; unit: string } {
-  if (unit === 'g' && q >= 1000) return { q: q / 1000, unit: 'kg' };
-  if (unit === 'ml' && q >= 1000) return { q: q / 1000, unit: 'l' };
-  if (unit === 'cl' && q >= 100) return { q: q / 100, unit: 'l' };
-  return { q, unit };
+/**
+ * Readable metric unit for an amount of `base` g or ml: kg / l from 1000; once scaled, smaller
+ * units below that (0,25 kg → 250 g, 0,125 l → 12,5 cl, 0,5 cl → 5 ml). As typed otherwise.
+ */
+function metricDisplayUnit(base: number, unit: string, kind: 'mass' | 'volume', scaled: boolean): string {
+  if (base >= 1000) return kind === 'mass' ? 'kg' : 'l';
+  if (!scaled) return unit;
+  if (kind === 'mass') return base >= 1 || unit !== 'mg' ? 'g' : 'mg';
+  // French recipes count liquids in cl; ml for the smallest amounts or when written in ml.
+  return unit === 'ml' || base < 10 ? 'ml' : 'cl';
 }
 
 /** 1.5 → "1 ½", 0.333 → "⅓", 250 → "250", 1.25 kg → "1,25" (fr) */
@@ -82,9 +94,15 @@ export interface ScaledIngredient extends IngredientData {
 export function scaleIngredient(i: IngredientData, factor: number): IngredientData {
   const quantity = scaleQuantity(i.quantity, factor, i.unit);
   const quantityMax = scaleQuantity(i.quantityMax, factor, i.unit);
-  if (quantity !== null && (i.unit === 'g' || i.unit === 'ml' || i.unit === 'cl') && quantityMax === null) {
-    const n = normalizeMetric(quantity, i.unit);
-    return { ...i, quantity: n.q, unit: n.unit, quantityMax };
+  const def = getUnit(i.unit);
+  const scaled = factor !== 1;
+  if (quantity === null || !def || def.rounding !== 'metric' || def.kind === 'count') {
+    return { ...i, quantity, quantityMax };
   }
-  return { ...i, quantity, quantityMax };
+  if (!scaled && quantityMax !== null) return { ...i, quantity, quantityMax };
+  const unit = metricDisplayUnit((quantityMax ?? quantity) * def.base, i.unit, def.kind, scaled);
+  if (unit === i.unit) return { ...i, quantity, quantityMax };
+  const ratio = def.base / getUnit(unit)!.base;
+  const convert = (q: number | null) => (q === null ? null : clean(q * ratio));
+  return { ...i, quantity: convert(quantity), quantityMax: convert(quantityMax), unit };
 }
