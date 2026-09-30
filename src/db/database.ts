@@ -30,11 +30,16 @@ async function init(lang: 'fr' | 'en'): Promise<DbDriver> {
   return db;
 }
 
-/** Opens (once), migrates and seeds the database. */
+/**
+ * Opens (once), migrates and seeds the database. A failure is kept until `resetDb()`: startup
+ * shows a blocking error screen instead of letting every screen retry the whole opening.
+ */
 export function getDb(lang: 'fr' | 'en' = 'fr'): Promise<DbDriver> {
-  instance ??= init(lang).catch((e: unknown) => {
-    instance = null;
-    throw e;
-  });
+  instance ??= init(lang);
   return instance;
+}
+
+/** Forgets a failed opening so that the next getDb() tries again ("Retry" at startup). */
+export function resetDb(): void {
+  instance = null;
 }

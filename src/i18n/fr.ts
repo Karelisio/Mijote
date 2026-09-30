@@ -27,6 +27,11 @@ export const fr = {
     tomorrow: 'Demain',
     error: 'Une erreur est survenue',
   },
+  startup: {
+    errorTitle: 'Impossible d’ouvrir vos recettes',
+    errorBody:
+      'La base de données de Mijote n’a pas pu être ouverte. Réessayez ; si le problème persiste, redémarrez l’app.',
+  },
   nav: {
     recipes: 'Recettes',
     planner: 'Planning',

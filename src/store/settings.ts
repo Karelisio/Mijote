@@ -17,6 +17,11 @@ export interface SettingsState {
   set: (patch: Partial<Omit<SettingsState, 'set'>>) => void;
 }
 
+let markHydrated: () => void = () => undefined;
+const hydrated = new Promise<void>((resolve) => {
+  markHydrated = resolve;
+});
+
 const preferencesStorage: StateStorage = {
   getItem: async (name) => (await Preferences.get({ key: name })).value,
   setItem: (name, value) => Preferences.set({ key: name, value }),
@@ -40,17 +45,24 @@ export const useSettings = create<SettingsState>()(
       version: 1,
       storage: createJSONStorage(() => preferencesStorage),
       partialize: ({ set: _set, ...rest }) => rest,
+      // Called after loading, successfully or not: zustand never calls onFinishHydration when
+      // reading or parsing the stored value fails, which used to leave the app on its splash.
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) console.error('settings: stored value unreadable, using defaults', error);
+        markHydrated();
+      },
     },
   ),
 );
 
-/** Resolves once persisted settings have been loaded. */
-export function settingsHydrated(): Promise<void> {
-  if (useSettings.persist.hasHydrated()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const unsub = useSettings.persist.onFinishHydration(() => {
-      unsub();
-      resolve();
-    });
+/**
+ * Resolves once persisted settings have been loaded — or could not be (defaults are kept) — and
+ * at the latest after `timeoutMs`, so a storage that never answers cannot block the startup.
+ */
+export function settingsHydrated(timeoutMs = 3000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
   });
+  return Promise.race([hydrated, timeout]).finally(() => clearTimeout(timer));
 }

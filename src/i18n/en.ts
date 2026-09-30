@@ -29,6 +29,10 @@ export const en: Dict = {
     tomorrow: 'Tomorrow',
     error: 'Something went wrong',
   },
+  startup: {
+    errorTitle: 'Could not open your recipes',
+    errorBody: 'Mijote could not open its database. Try again; if the problem persists, restart the app.',
+  },
   nav: {
     recipes: 'Recipes',
     planner: 'Planner',
