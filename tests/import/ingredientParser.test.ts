@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parseIngredientLine } from '@/import/ingredientParser';
+import { formatQuantity } from '@/features/recipes/portions';
+import { formatUnit } from '@/config/units';
+
+/** "⁄", looks like "/" but is a distinct character. */
+const FRACTION_SLASH = '\u2044';
 
 describe('parseIngredientLine', () => {
   it('parses a plain integer with a simple unit', () => {
@@ -78,6 +83,57 @@ describe('parseIngredientLine', () => {
     expect(r.quantity).toBe(1.5);
     expect(r.unit).toBe('cup');
     expect(r.name).toBe('farine');
+  });
+
+  it('parses a whole number and a spaced unicode fraction (as displayed)', () => {
+    expect(parseIngredientLine('1 ½ c. à soupe de sucre')).toEqual({
+      quantity: 1.5,
+      quantityMax: null,
+      unit: 'tbsp',
+      name: 'sucre',
+      note: '',
+    });
+    expect(parseIngredientLine('2 ¼ tasses de lait').quantity).toBe(2.25);
+    expect(parseIngredientLine('3\u00a0¾ cups flour').quantity).toBe(3.75);
+  });
+
+  it('parses the fraction slash (U+2044) like "/"', () => {
+    expect(parseIngredientLine(`1${FRACTION_SLASH}2 citron`)).toEqual({
+      quantity: 0.5,
+      quantityMax: null,
+      unit: '',
+      name: 'citron',
+      note: '',
+    });
+    const r = parseIngredientLine(`1 1${FRACTION_SLASH}2 tasse de farine`);
+    expect(r.quantity).toBe(1.5);
+    expect(r.unit).toBe('cup');
+    expect(r.name).toBe('farine');
+  });
+
+  it('parses a hyphenated mixed number', () => {
+    expect(parseIngredientLine('1-1/2 cups flour')).toEqual({
+      quantity: 1.5,
+      quantityMax: null,
+      unit: 'cup',
+      name: 'flour',
+      note: '',
+    });
+    expect(parseIngredientLine(`2-1${FRACTION_SLASH}4 tasses de lait`).quantity).toBe(2.25);
+  });
+
+  it('keeps "1-2" a range, not a mixed number', () => {
+    const r = parseIngredientLine('1-2 oignons');
+    expect(r.quantity).toBe(1);
+    expect(r.quantityMax).toBe(2);
+    expect(r.name).toBe('oignons');
+  });
+
+  it('parses ranges written with spaced unicode fractions (as displayed)', () => {
+    const a = parseIngredientLine('1–1 ½ c. à soupe de sucre');
+    expect([a.quantity, a.quantityMax, a.unit, a.name]).toEqual([1, 1.5, 'tbsp', 'sucre']);
+    const b = parseIngredientLine('1 ½–2 tasses de farine');
+    expect([b.quantity, b.quantityMax, b.unit, b.name]).toEqual([1.5, 2, 'cup', 'farine']);
   });
 
   it('parses ¼ and ¾ and ⅓ and ⅔ and ⅛', () => {
@@ -259,5 +315,24 @@ describe('parseIngredientLine', () => {
     const r = parseIngredientLine('2 tomates (bien mûres) pelées');
     expect(r.name).toBe('tomates pelées');
     expect(r.note).toBe('bien mûres');
+  });
+});
+
+describe('quantity round trip (display → parse)', () => {
+  // Re-parsing a displayed line (editor, shopping item sheet) must give the same quantity back.
+  const QUANTITIES = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1, 1.25, 1.5, 2, 2.5, 3.75, 10];
+  const UNITS = ['', 'g', 'ml', 'tsp', 'tbsp', 'cup', 'clove'];
+  const CASES = (['fr', 'en'] as const).flatMap((lang) => UNITS.map((unit) => [lang, unit] as const));
+
+  it.each(CASES)('%s, unit "%s"', (lang, unit) => {
+    for (const q of QUANTITIES) {
+      const label = unit ? formatUnit(unit, q, lang) : '';
+      const line = [formatQuantity(q, lang, unit), label, 'sucre'].filter(Boolean).join(' ');
+      const r = parseIngredientLine(line);
+      expect(Math.abs((r.quantity ?? NaN) - q), line).toBeLessThan(0.02);
+      expect(r.quantityMax, line).toBeNull();
+      expect(r.unit, line).toBe(unit);
+      expect(r.name, line).toBe('sucre');
+    }
   });
 });

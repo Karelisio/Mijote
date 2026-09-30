@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { App as CapApp } from '@capacitor/app';
@@ -14,7 +14,7 @@ import { ActiveTimersPill } from '@/features/cooking/ActiveTimersPill';
 import { RecipesPage } from '@/features/recipes/RecipesPage';
 import { RecipeDetailPage } from '@/features/recipes/RecipeDetailPage';
 import { usePendingImport } from '@/features/import/pendingImport';
-import { deepLinkToPath } from './deepLink';
+import { deepLinkToPath, takeLaunchPath } from './deepLink';
 import { MagoDialogHost } from '@/features/mago/MagoDialogHost';
 import { UpdateDialogHost } from '@/features/update/UpdateDialogHost';
 
@@ -33,6 +33,12 @@ function useNativeIntegration() {
   const navigate = useNavigate();
   const location = useLocation();
   const setShared = usePendingImport((s) => s.setShared);
+  // `navigate` changes on every location change: the native listeners below read the latest one
+  // through a ref so they are registered once instead of re-running on each navigation.
+  const navigateRef = useRef(navigate);
+  useLayoutEffect(() => {
+    navigateRef.current = navigate;
+  });
 
   // Android back button: overlays first, then history, then tabs, then minimise.
   useEffect(() => {
@@ -41,28 +47,27 @@ function useNativeIntegration() {
       if (popBack()) return;
       const path = window.location.pathname;
       if (TABS.includes(path)) {
-        if (path !== '/recipes') navigate('/recipes', { replace: true });
+        if (path !== '/recipes') navigateRef.current('/recipes', { replace: true });
         else void CapApp.minimizeApp();
       } else {
-        navigate(-1);
+        navigateRef.current(-1);
       }
     });
     return () => void h.then((x) => x.remove());
-  }, [navigate]);
+  }, []);
 
-  // App shortcuts and deep links.
+  // App shortcuts and deep links (the launch URL only once per process).
   useEffect(() => {
     if (!isNative()) return;
-    void CapApp.getLaunchUrl().then((r) => {
-      const p = r?.url ? deepLinkToPath(r.url) : null;
-      if (p) navigate(p);
+    void takeLaunchPath(() => CapApp.getLaunchUrl()).then((p) => {
+      if (p) navigateRef.current(p);
     });
     const h = CapApp.addListener('appUrlOpen', ({ url }) => {
       const p = deepLinkToPath(url);
-      if (p) navigate(p);
+      if (p) navigateRef.current(p);
     });
     return () => void h.then((x) => x.remove());
-  }, [navigate]);
+  }, []);
 
   // "Share to Mijote" from the browser.
   useEffect(() => {
@@ -70,14 +75,14 @@ function useNativeIntegration() {
     const handle = (text?: string, subject?: string) => {
       if (!text) return;
       setShared({ text, subject: subject ?? '' });
-      navigate('/import');
+      navigateRef.current('/import');
     };
     void MijoteNative.consumePendingShare()
       .then((r) => handle(r.text, r.subject))
       .catch(() => undefined);
     const h = MijoteNative.addListener('shareReceived', (d) => handle(d.text, d.subject));
     return () => void h.then((x) => x.remove());
-  }, [navigate, setShared]);
+  }, [setShared]);
 
   return location;
 }
