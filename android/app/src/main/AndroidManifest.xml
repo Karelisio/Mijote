@@ -65,4 +65,8 @@
 
     <!-- Network is only used to import recipes from a web page. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Cooking timers ring on time in the background (Android 12+: the user grants it in
+         "Alarms & reminders", which Mijote opens from the timer hint and Settings). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 </manifest>

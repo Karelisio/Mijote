@@ -3,7 +3,6 @@ import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SystemBars } from '@capacitor/core';
 import { KeepAwake } from '@capacitor-community/keep-awake';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Button, IconButton } from '@/ui/Button';
 import { Checkbox, Spinner } from '@/ui/Controls';
@@ -22,8 +21,9 @@ import { formatAmount } from '@/features/recipes/format';
 import { scaleIngredient } from '@/features/recipes/portions';
 import { formatClock } from '@/features/recipes/timerDetect';
 import { markRecipeCooked } from '@/features/recipes/actions';
-import { remainingMs, useTimers, type Timer } from './timers';
+import { remainingMs, rescheduleRunningTimers, useTimers, type Timer } from './timers';
 import { useNow } from './useTimerTicker';
+import { useExactAlarmAccess } from './exactAlarm';
 
 function useImmersive(keepOn: boolean) {
   useEffect(() => {
@@ -35,18 +35,6 @@ function useImmersive(keepOn: boolean) {
       void KeepAwake.allowSleep().catch(() => undefined);
     };
   }, [keepOn]);
-}
-
-function useExactAlarmStatus(): [boolean, () => void] {
-  const [denied, setDenied] = useState(false);
-  useEffect(() => {
-    if (!isNative()) return;
-    void LocalNotifications.checkExactNotificationSetting()
-      .then((s) => setDenied(s.exact_alarm === 'denied'))
-      .catch(() => undefined);
-  }, []);
-  const ask = () => void LocalNotifications.changeExactNotificationSetting().catch(() => undefined);
-  return [denied, ask];
 }
 
 function TimerCard({ timer, now }: { timer: Timer; now: number }) {
@@ -103,7 +91,7 @@ export default function CookingPage() {
   const startTimer = useTimers((s) => s.start);
   const timers = allTimers.filter((x) => x.recipeId === id);
   const now = useNow(250, timers.length > 0);
-  const [exactDenied, askExact] = useExactAlarmStatus();
+  const exactAlarm = useExactAlarmAccess(() => void rescheduleRunningTimers());
 
   useImmersive(keepOn);
   useBackHandler(true, () => navigate(-1));
@@ -189,11 +177,11 @@ export default function CookingPage() {
         ))}
       </div>
 
-      {exactDenied && timers.length > 0 && (
+      {exactAlarm.denied && timers.length > 0 && (
         <div className="cook-hint">
           <Icon name="notifications" size={20} />
           <span className="grow">{t('cooking.exactAlarmHint')}</span>
-          <Button variant="text" onClick={askExact}>
+          <Button variant="text" onClick={exactAlarm.ask}>
             {t('cooking.allow')}
           </Button>
         </div>

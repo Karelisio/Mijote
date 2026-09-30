@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { Screen } from '@/ui/Screen';
 import { Button } from '@/ui/Button';
 import { ListItem, Segmented, Switch, LinearProgress } from '@/ui/Controls';
@@ -13,6 +12,8 @@ import { snackbar } from '@/store/snackbar';
 import { SEED_PRESETS } from '@/theme/palette';
 import { getDynamicSeed, isNative } from '@/platform/native';
 import { useUpdate } from '@/features/update/update';
+import { useExactAlarmAccess } from '@/features/cooking/exactAlarm';
+import { rescheduleRunningTimers } from '@/features/cooking/timers';
 import { seedSampleRecipes } from '@/db/seed';
 import { db, refreshRecipes } from '@/store/recipes';
 import {
@@ -74,7 +75,7 @@ export default function SettingsPage() {
   const lang = useLang();
   const s = useSettings();
   const [dynamicAvailable, setDynamicAvailable] = useState(false);
-  const [exactDenied, setExactDenied] = useState(false);
+  const exactAlarm = useExactAlarmAccess(() => void rescheduleRunningTimers());
   const [busy, setBusy] = useState(false);
   const [backups, setBackups] = useState<LocalBackup[]>([]);
   const [backupsOpen, setBackupsOpen] = useState(false);
@@ -84,11 +85,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void getDynamicSeed().then((x) => setDynamicAvailable(x !== null));
-    if (isNative()) {
-      void LocalNotifications.checkExactNotificationSetting()
-        .then((r) => setExactDenied(r.exact_alarm !== 'granted'))
-        .catch(() => undefined);
-    }
   }, []);
 
   useEffect(() => {
@@ -199,12 +195,12 @@ export default function SettingsPage() {
           />
         }
       />
-      {isNative() && exactDenied && (
+      {exactAlarm.denied && (
         <ListItem
           icon="notifications"
           headline={t('settings.exactAlarms')}
           supporting={t('settings.exactAlarmsHint')}
-          onClick={() => void LocalNotifications.changeExactNotificationSetting().catch(() => undefined)}
+          onClick={exactAlarm.ask}
           trailing={<Icon name="open_in_new" size={20} />}
         />
       )}
