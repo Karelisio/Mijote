@@ -8,6 +8,8 @@ export interface ReleaseInfo {
   notes: string;
   apkUrl: string;
   apkSize: number;
+  /** Hex SHA-256 of the APK from the asset's "digest" ("sha256:…"), when GitHub provides it. */
+  apkSha256: string | null;
   htmlUrl: string;
 }
 
@@ -30,6 +32,14 @@ interface GithubAsset {
   name?: unknown;
   browser_download_url?: unknown;
   size?: unknown;
+  digest?: unknown;
+}
+
+/** "sha256:ABC…" → "abc…"; null for another algorithm or a malformed value. */
+export function parseSha256Digest(digest: unknown): string | null {
+  if (typeof digest !== 'string') return null;
+  const m = /^sha256:([0-9a-f]{64})$/i.exec(digest.trim());
+  return m ? m[1]!.toLowerCase() : null;
 }
 
 /** Release assets are downloaded from github.com only (the native side enforces it too). */
@@ -63,6 +73,7 @@ export function parseRelease(json: unknown): ReleaseInfo | null {
     notes: typeof r.body === 'string' ? cleanNotes(r.body) : '',
     apkUrl: apk.browser_download_url as string,
     apkSize: typeof apk.size === 'number' ? apk.size : 0,
+    apkSha256: parseSha256Digest(apk.digest),
     htmlUrl: typeof r.html_url === 'string' ? r.html_url : '',
   };
 }

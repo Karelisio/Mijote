@@ -47,7 +47,7 @@ function pickZip(): Promise<File | null> {
 
 function UpdateSection() {
   const t = useT();
-  const { supported, status, latest, check } = useUpdate();
+  const { supported, status, latest, check, installed } = useUpdate();
   if (!isNative()) return null;
   const supporting = !supported
     ? t('update.storeManaged')
@@ -59,13 +59,13 @@ function UpdateSection() {
           ? t('update.upToDate')
           : status === 'error'
             ? t('update.error')
-            : t('update.current', { version: __APP_VERSION__ });
+            : t('update.current', { version: installed });
   return (
     <>
       <div className="section-title label-large">{t('update.section')}</div>
       <ListItem
         icon="download"
-        headline={supported ? t('update.check') : t('update.current', { version: __APP_VERSION__ })}
+        headline={supported ? t('update.check') : t('update.current', { version: installed })}
         supporting={supporting}
         onClick={
           supported
@@ -91,6 +91,7 @@ export default function SettingsPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingRestore, setPendingRestore] = useState<LocalBackup | null>(null);
   const [magoPrompt, setMagoPrompt] = useState(false);
+  const installed = useUpdate((u) => u.installed);
 
   useEffect(() => {
     void getDynamicSeed().then((x) => setDynamicAvailable(x !== null));
@@ -257,7 +258,7 @@ export default function SettingsPage() {
         <img src="/favicon.svg" alt="" width={56} height={56} />
         <div>
           <div className="title-large serif">Mijote</div>
-          <div className="body-medium muted">{t('settings.version', { version: __APP_VERSION__ })}</div>
+          <div className="body-medium muted">{t('settings.version', { version: installed })}</div>
           <div className="body-small muted">{t('settings.aboutBody')}</div>
         </div>
       </div>

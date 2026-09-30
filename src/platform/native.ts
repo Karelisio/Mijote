@@ -21,8 +21,11 @@ interface MijoteNativePlugin {
   }>;
   canInstallPackages(): Promise<{ value: boolean }>;
   openInstallPermissionSettings(): Promise<void>;
-  /** Rejects with code "install_permission" when "Install unknown apps" is not allowed. */
-  downloadAndInstallApk(options: { url: string }): Promise<void>;
+  /**
+   * Rejects with code "install_permission" when "Install unknown apps" is not allowed, "busy"
+   * while another download runs and "checksum" when the file does not match `sha256`.
+   */
+  downloadAndInstallApk(options: { url: string; sha256?: string | null }): Promise<void>;
   addListener(event: 'updateProgress', cb: (d: { percent: number }) => void): Promise<PluginListenerHandle>;
 }
 

@@ -3,7 +3,7 @@ import { Dialog } from '@/ui/Dialog';
 import { Button } from '@/ui/Button';
 import { LinearProgress } from '@/ui/Controls';
 import { useT } from '@/i18n';
-import { currentVersion, useUpdate } from './update';
+import { useUpdate } from './update';
 
 /** "New version available" dialog, including the install-permission and download steps. */
 export function UpdateDialogHost() {
@@ -11,6 +11,7 @@ export function UpdateDialogHost() {
   const {
     prompt,
     latest,
+    installed,
     status,
     progress,
     needsPermission,
@@ -64,7 +65,7 @@ export function UpdateDialogHost() {
       ) : (
         <>
           <p style={{ margin: '0 0 8px' }}>
-            {t('update.availableBody', { current: currentVersion() })}
+            {t('update.availableBody', { current: installed })}
             {sizeMb}
           </p>
           {latest?.notes && <pre className="update-notes selectable">{latest.notes}</pre>}
