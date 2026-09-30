@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- What ${applicationId}.fileprovider may hand to other apps as content:// URIs. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Camera.getPhoto with the camera: the picture is written to getExternalFilesDir(Pictures). -->
+    <external-files-path name="camera_pictures" path="Pictures/" />
+    <!-- Private cache: shared files (share/), the update APK (updates/), camera temporary files. -->
+    <cache-path name="cache" path="." />
 </paths>
