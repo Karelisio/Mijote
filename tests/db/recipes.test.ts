@@ -8,7 +8,8 @@ import {
   saveRecipe,
   searchRecipeIds,
 } from '@/db/repos/recipes';
-import { sampleRecipes, seedSampleRecipes } from '@/db/seed';
+import { sampleRecipes, seedOnFirstLaunch, seedSampleRecipes } from '@/db/seed';
+import { getMeta } from '@/db/meta';
 import { memoryDb } from '../helpers/db';
 
 describe('recipes repository', () => {
@@ -81,5 +82,22 @@ describe('recipes repository', () => {
     const loaded = await getRecipe(db, r!.id);
     expect(loaded?.cookedCount).toBe(2);
     expect(loaded?.lastCookedAt).toBe(43);
+  });
+
+  it('seeds the samples once, together with the "seeded" flag', async () => {
+    const db = await memoryDb();
+    expect(await seedOnFirstLaunch(db, 'fr')).toBe(true);
+    expect(await seedOnFirstLaunch(db, 'fr')).toBe(false);
+    expect(await listRecipeSummaries(db)).toHaveLength(3);
+    expect(await getMeta(db, 'seeded')).not.toBeNull();
+  });
+
+  it('leaves neither samples nor flag when seeding fails', async () => {
+    const db = await memoryDb();
+    await db.execute('DROP TABLE steps'); // the third write of every recipe now fails
+    await expect(seedOnFirstLaunch(db, 'fr')).rejects.toThrow();
+    const rows = await db.query<{ n: number }>('SELECT COUNT(*) AS n FROM recipes');
+    expect(Number(rows[0]!.n)).toBe(0);
+    expect(await getMeta(db, 'seeded')).toBeNull();
   });
 });

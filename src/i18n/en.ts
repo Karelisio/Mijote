@@ -318,7 +318,12 @@ export const en: Dict = {
     importConfirmTitle: 'Import this backup?',
     importConfirmBody: 'Your current data will be replaced. An automatic backup is made first.',
     importDone: 'Backup imported ✓',
-    importFailed: 'Invalid or unreadable archive',
+    importFailed: 'This file is not a valid Mijote backup.',
+    importCorrupted: 'Damaged archive: it cannot be read.',
+    importNewer: 'This backup comes from a newer version of Mijote: update the app to import it.',
+    safetyBackupFailed:
+      'Restore cancelled: your current data could not be backed up first. Nothing was changed.',
+    safetyBackup: 'Before the last restore',
     exportDone: 'Archive ready',
     backups: 'Automatic backups',
     backupsHint: 'One per day, the last 5 are kept on the device',

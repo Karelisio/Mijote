@@ -24,6 +24,15 @@ import {
   restoreLocalBackup,
   type LocalBackup,
 } from '@/features/backup/backup';
+import { BackupError, type BackupErrorCode } from '@/features/backup/backupData';
+import type { TKey } from '@/i18n';
+
+const BACKUP_ERRORS: Record<BackupErrorCode, TKey> = {
+  corrupted: 'settings.importCorrupted',
+  invalid: 'settings.importFailed',
+  newer: 'settings.importNewer',
+  safety_failed: 'settings.safetyBackupFailed',
+};
 
 function pickZip(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -98,11 +107,7 @@ export default function SettingsPage() {
       if (ok) snackbar(ok);
     } catch (e) {
       console.error(e);
-      snackbar(
-        e instanceof Error && /backup|format|invalid/.test(e.message)
-          ? t('settings.importFailed')
-          : t('common.error'),
-      );
+      snackbar(e instanceof BackupError ? t(BACKUP_ERRORS[e.code]) : t('common.error'), { duration: 6000 });
     } finally {
       setBusy(false);
     }
@@ -319,9 +324,13 @@ export default function SettingsPage() {
         {backups.map((b) => (
           <ListItem
             key={b.path}
-            icon="history"
-            headline={fmtDate(b.date)}
-            supporting={`${(b.size / 1024 / 1024).toFixed(1)} Mo`}
+            icon={b.kind === 'safety' ? 'settings_backup_restore' : 'history'}
+            headline={b.kind === 'safety' ? t('settings.safetyBackup') : fmtDate(b.date)}
+            supporting={
+              b.kind === 'safety'
+                ? `${fmtDate(b.date)} · ${(b.size / 1024 / 1024).toFixed(1)} Mo`
+                : `${(b.size / 1024 / 1024).toFixed(1)} Mo`
+            }
             onClick={() => setPendingRestore(b)}
             trailing={<span className="label-large primary-text">{t('settings.restore')}</span>}
           />

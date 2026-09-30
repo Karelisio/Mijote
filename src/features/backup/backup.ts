@@ -1,15 +1,26 @@
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { db, refreshRecipes } from '@/store/recipes';
 import { getMeta, setMeta } from '@/db/meta';
 import { readImageBase64, writeImageBase64 } from '@/platform/images';
 import { shareFile } from '@/platform/share';
 import { useShopping } from '@/features/shopping/store';
-import { buildBackupZip, collectBackupData, readBackupZip, restoreBackupData } from './backupData';
+import {
+  BackupError,
+  buildBackupZip,
+  collectBackupData,
+  openBackupZip,
+  readBackupZip,
+  restoreBackupData,
+} from './backupData';
 
 const BACKUP_DIR = 'backups';
 const KEEP = 5;
 const DAY = 24 * 3600 * 1000;
+/** Daily/manual backups, rotated. */
+const DAILY_RE = /^mijote-\d{8}-\d{6}\.zip$/;
+/** Copy of the data taken before a restore: its own slot, never rotated out. */
+const SAFETY_NAME = 'mijote-avant-restauration.zip';
 
 function stamp(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
@@ -43,37 +54,44 @@ export interface LocalBackup {
   name: string;
   date: Date;
   size: number;
+  /** "safety": the copy taken before the last restore. */
+  kind: 'daily' | 'safety';
 }
 
 export async function listBackups(): Promise<LocalBackup[]> {
   try {
     const r = await Filesystem.readdir({ path: BACKUP_DIR, directory: Directory.Data });
     return r.files
-      .filter((f) => f.name.endsWith('.zip'))
+      .filter((f) => DAILY_RE.test(f.name) || f.name === SAFETY_NAME)
       .map((f) => ({
         path: `${BACKUP_DIR}/${f.name}`,
         name: f.name,
         date: new Date(f.mtime ?? 0),
         size: f.size ?? 0,
+        kind: f.name === SAFETY_NAME ? ('safety' as const) : ('daily' as const),
       }))
-      .sort((a, b) => b.name.localeCompare(a.name));
+      .sort((a, b) => b.date.getTime() - a.date.getTime() || b.name.localeCompare(a.name));
   } catch {
     return [];
   }
 }
 
-/** Writes a local backup and keeps the most recent five. */
-export async function backupNow(): Promise<void> {
+async function writeBackup(name: string): Promise<void> {
   const zip = await createZip();
   const data = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
   await Filesystem.writeFile({
-    path: `${BACKUP_DIR}/mijote-${stamp()}.zip`,
+    path: `${BACKUP_DIR}/${name}`,
     directory: Directory.Data,
     data,
     recursive: true,
   });
-  const all = await listBackups();
-  for (const old of all.slice(KEEP)) {
+}
+
+/** Writes a local backup and keeps the most recent five (the pre-restore copy is not counted). */
+export async function backupNow(): Promise<void> {
+  await writeBackup(`mijote-${stamp()}.zip`);
+  const daily = (await listBackups()).filter((b) => b.kind === 'daily');
+  for (const old of daily.slice(KEEP)) {
     await Filesystem.deleteFile({ path: old.path, directory: Directory.Data }).catch(() => undefined);
   }
   await setMeta(await db(), 'lastBackupAt', String(Date.now()));
@@ -92,8 +110,12 @@ export async function runAutoBackup(): Promise<boolean> {
 
 async function restoreZip(zip: JSZip): Promise<void> {
   const { data, images } = await readBackupZip(zip);
-  // Safety net: snapshot current data before replacing it.
-  await backupNow().catch(() => undefined);
+  // Safety net: the current data is saved first, in its own slot; without it nothing is replaced.
+  try {
+    await writeBackup(SAFETY_NAME);
+  } catch (e) {
+    throw new BackupError('safety_failed', e);
+  }
   for (const [path, b64] of images) await writeImageBase64(path, b64);
   await restoreBackupData(await db(), data);
   await refreshRecipes();
@@ -101,14 +123,11 @@ async function restoreZip(zip: JSZip): Promise<void> {
 }
 
 export async function importBackupFile(file: Blob): Promise<void> {
-  await restoreZip(await JSZip.loadAsync(file));
+  await restoreZip(await openBackupZip(file));
 }
 
 export async function restoreLocalBackup(path: string): Promise<void> {
   const r = await Filesystem.readFile({ path, directory: Directory.Data });
-  const zip =
-    typeof r.data === 'string'
-      ? await JSZip.loadAsync(r.data, { base64: true })
-      : await JSZip.loadAsync(r.data);
+  const zip = typeof r.data === 'string' ? await openBackupZip(r.data, true) : await openBackupZip(r.data);
   await restoreZip(zip);
 }

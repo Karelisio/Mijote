@@ -321,7 +321,13 @@ export const fr = {
     importConfirmTitle: 'Importer cette sauvegarde ?',
     importConfirmBody: 'Vos données actuelles seront remplacées. Une sauvegarde automatique est faite avant.',
     importDone: 'Sauvegarde importée ✓',
-    importFailed: 'Archive invalide ou illisible',
+    importFailed: 'Ce fichier n’est pas une sauvegarde Mijote valide.',
+    importCorrupted: 'Archive endommagée : impossible de la lire.',
+    importNewer:
+      'Cette sauvegarde vient d’une version plus récente de Mijote : mettez l’app à jour pour l’importer.',
+    safetyBackupFailed:
+      'Restauration annulée : vos données actuelles n’ont pas pu être sauvegardées avant. Rien n’a été modifié.',
+    safetyBackup: 'Avant la dernière restauration',
     exportDone: 'Archive prête',
     backups: 'Sauvegardes automatiques',
     backupsHint: 'Une par jour, les 5 dernières sont conservées sur l’appareil',

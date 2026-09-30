@@ -3,10 +3,35 @@ import type { DbDriver, Sql } from '@/db/driver';
 import type { MealPlanEntry, Recipe, ShoppingItem } from '@/db/types';
 import { getRecipe, saveRecipeTx } from '@/db/repos/recipes';
 import { listShopping } from '@/db/repos/shopping';
-import { getUserVersion } from '@/db/migrations';
+import { getUserVersion, LATEST_VERSION } from '@/db/migrations';
 import { safeHttpUrl } from '@/lib/url';
 
 export const BACKUP_FORMAT = 1;
+
+/**
+ * Why a backup cannot be restored: an unreadable (damaged) archive, a file that is not a Mijote
+ * backup, a backup made by a newer version of Mijote, or no safety copy of the current data.
+ */
+export type BackupErrorCode = 'corrupted' | 'invalid' | 'newer' | 'safety_failed';
+
+export class BackupError extends Error {
+  constructor(
+    readonly code: BackupErrorCode,
+    cause?: unknown,
+  ) {
+    super(`backup: ${code}`, { cause });
+    this.name = 'BackupError';
+  }
+}
+
+/** Opens a .zip archive (Blob, bytes or base64 text); a damaged one is a BackupError. */
+export async function openBackupZip(data: Blob | Uint8Array | string, base64 = false): Promise<JSZip> {
+  try {
+    return await JSZip.loadAsync(data, { base64 });
+  } catch (e) {
+    throw new BackupError('corrupted', e);
+  }
+}
 
 export interface BackupCollection {
   id: string;
@@ -83,10 +108,16 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 
 /** Structural validation of an untrusted backup file. */
 export function parseBackupData(raw: unknown): BackupData {
-  if (!isObj(raw) || raw.app !== 'Mijote') throw new Error('not_a_mijote_backup');
-  if (typeof raw.format !== 'number' || raw.format > BACKUP_FORMAT) throw new Error('unsupported_format');
+  if (!isObj(raw) || raw.app !== 'Mijote' || typeof raw.format !== 'number') {
+    throw new BackupError('invalid');
+  }
+  // Written by a newer Mijote: its data may not fit this version's database.
+  if (raw.format > BACKUP_FORMAT) throw new BackupError('newer');
+  if (typeof raw.schemaVersion === 'number' && raw.schemaVersion > LATEST_VERSION) {
+    throw new BackupError('newer');
+  }
   for (const key of ['recipes', 'collections', 'mealPlan', 'shopping'] as const) {
-    if (!Array.isArray(raw[key])) throw new Error(`invalid_${key}`);
+    if (!Array.isArray(raw[key])) throw new BackupError('invalid');
   }
   const recipes = raw.recipes as unknown[];
   for (const r of recipes) {
@@ -97,7 +128,7 @@ export function parseBackupData(raw: unknown): BackupData {
       !Array.isArray(r.sections) ||
       !Array.isArray(r.steps)
     ) {
-      throw new Error('invalid_recipe');
+      throw new BackupError('invalid');
     }
   }
   const data = raw as unknown as BackupData;
@@ -193,8 +224,14 @@ export async function buildBackupZip(data: BackupData, images: Map<string, strin
 
 export async function readBackupZip(zip: JSZip): Promise<{ data: BackupData; images: Map<string, string> }> {
   const file = zip.file('data.json');
-  if (!file) throw new Error('not_a_mijote_backup');
-  const data = parseBackupData(JSON.parse(await file.async('string')));
+  if (!file) throw new BackupError('invalid');
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await file.async('string'));
+  } catch (e) {
+    throw new BackupError('corrupted', e);
+  }
+  const data = parseBackupData(raw);
   const images = new Map<string, string>();
   const wanted = new Set(data.recipes.map((r) => r.photo).filter((p): p is string => !!p));
   for (const path of wanted) {

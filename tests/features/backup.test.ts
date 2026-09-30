@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import {
+  BackupError,
   buildBackupZip,
   collectBackupData,
+  openBackupZip,
   parseBackupData,
   readBackupZip,
   restoreBackupData,
 } from '@/features/backup/backupData';
+import { LATEST_VERSION } from '@/db/migrations';
 import { seedSampleRecipes } from '@/db/seed';
 import { listRecipeSummaries, searchRecipeIds } from '@/db/repos/recipes';
 import { createCollection, setRecipeCollections } from '@/db/repos/collections';
@@ -97,5 +100,33 @@ describe('backup', () => {
         shopping: [],
       }),
     ).toThrow();
+  });
+});
+
+describe('backup errors', () => {
+  const code = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (e) {
+      return e instanceof BackupError ? e.code : `other: ${String(e)}`;
+    }
+    return 'no error';
+  };
+  const valid = { app: 'Mijote', format: 1, recipes: [], collections: [], mealPlan: [], shopping: [] };
+
+  it('tells a damaged archive from a foreign or newer one', async () => {
+    expect(await code(openBackupZip(new Uint8Array([1, 2, 3, 4])))).toBe('corrupted');
+    const badJson = new JSZip();
+    badJson.file('data.json', '{"app":"Mijote",');
+    expect(await code(readBackupZip(badJson))).toBe('corrupted');
+    expect(await code(readBackupZip(new JSZip()))).toBe('invalid');
+    expect(await code(Promise.resolve().then(() => parseBackupData({ app: 'Other' })))).toBe('invalid');
+    expect(await code(Promise.resolve().then(() => parseBackupData({ ...valid, format: 2 })))).toBe('newer');
+    expect(
+      await code(
+        Promise.resolve().then(() => parseBackupData({ ...valid, schemaVersion: LATEST_VERSION + 1 })),
+      ),
+    ).toBe('newer');
+    expect(parseBackupData({ ...valid, schemaVersion: LATEST_VERSION - 1 }).recipes).toEqual([]);
   });
 });

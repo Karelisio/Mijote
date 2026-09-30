@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { createDriver, type DbDriver } from './driver';
 import { migrate } from './migrations';
-import { getMeta, setMeta } from './meta';
-import { seedSampleRecipes } from './seed';
+import { getMeta } from './meta';
+import { seedOnFirstLaunch } from './seed';
 
 let instance: Promise<DbDriver> | null = null;
 
@@ -23,9 +23,13 @@ async function init(lang: 'fr' | 'en'): Promise<DbDriver> {
   const db = await open();
   await migrate(db);
   if ((await getMeta(db, 'seeded')) === null) {
-    const { createSamplePhotos } = await import('./samplePhotos');
-    await seedSampleRecipes(db, lang, await createSamplePhotos());
-    await setMeta(db, 'seeded', String(Date.now()));
+    // Not fatal: without samples the app still works, and the next launch tries again.
+    try {
+      const { createSamplePhotos } = await import('./samplePhotos');
+      await seedOnFirstLaunch(db, lang, await createSamplePhotos());
+    } catch (e) {
+      console.error('sample recipes not added', e);
+    }
   }
   return db;
 }

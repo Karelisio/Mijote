@@ -1,6 +1,7 @@
-import type { DbDriver } from './driver';
+import type { DbDriver, Sql } from './driver';
 import type { Category, Difficulty, IngredientData, Recipe } from './types';
 import { saveRecipeTx } from './repos/recipes';
+import { getMeta, setMeta } from './meta';
 import { newId } from '@/lib/id';
 
 type I = [quantity: number | null, unit: string, name: string, note?: string];
@@ -276,13 +277,36 @@ export function sampleRecipes(lang: 'fr' | 'en', now = Date.now()): Recipe[] {
   return (lang === 'en' ? EN : FR).map((s, i) => toRecipe(s, now - i * 1000));
 }
 
-export async function seedSampleRecipes(
-  db: DbDriver,
+export async function seedSampleRecipesTx(
+  tx: Sql,
   lang: 'fr' | 'en',
   photos: (string | null)[] = [],
 ): Promise<void> {
   const recipes = sampleRecipes(lang).map((r, i) => ({ ...r, photo: photos[i] ?? null }));
-  await db.transaction(async (tx) => {
-    for (const r of recipes) await saveRecipeTx(tx, r);
+  for (const r of recipes) await saveRecipeTx(tx, r);
+}
+
+export function seedSampleRecipes(
+  db: DbDriver,
+  lang: 'fr' | 'en',
+  photos: (string | null)[] = [],
+): Promise<void> {
+  return db.transaction((tx) => seedSampleRecipesTx(tx, lang, photos));
+}
+
+/**
+ * First launch: the sample recipes and the "seeded" flag are written in one transaction, so an
+ * interrupted seeding leaves neither and is simply retried, never duplicated.
+ */
+export function seedOnFirstLaunch(
+  db: DbDriver,
+  lang: 'fr' | 'en',
+  photos: (string | null)[] = [],
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    if ((await getMeta(tx, 'seeded')) !== null) return false;
+    await seedSampleRecipesTx(tx, lang, photos);
+    await setMeta(tx, 'seeded', String(Date.now()));
+    return true;
   });
 }
