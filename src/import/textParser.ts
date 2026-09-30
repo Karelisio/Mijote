@@ -24,7 +24,7 @@ const SERVINGS_RES = [
   new RegExp(String.raw`^pour\s+(\d+)(?:\s*(?:à|a|-|–|ou)\s*\d+)?\s*${SERVING_WORDS}(?![a-z])`, 'i'),
   /^serves\s+(\d+)\b/i,
   /^(?:nombre\s+de\s+)?(?:personnes?|portions?|parts?|servings?|yield|rendement|pour)\s*:\s*(\d+)/i,
-  new RegExp(String.raw`^(\d+)\s*${SERVING_WORDS}\s*$`, 'i'),
+  new RegExp(String.raw`^(\d+)(?:\s*(?:à|a|-|–|ou)\s*\d+)?\s*${SERVING_WORDS}\s*$`, 'i'),
 ];
 
 const PREP_LABEL_RE = /^(?:(?:temps\s+de\s+)?pr[ée]paration\s*:|prep(?:aration)?\s*(?:time\s*:?|:))\s*(.*)$/i;

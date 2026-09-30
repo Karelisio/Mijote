@@ -37,7 +37,7 @@ function base64ToBytes(b64: string): Uint8Array {
 async function createZip(): Promise<JSZip> {
   const d = await db();
   const data = await collectBackupData(d);
-  // Kept as bytes (a quarter smaller than base64), one text at a time.
+  // Read one at a time and kept as bytes (a quarter smaller than base64 text).
   const images = new Map<string, Uint8Array>();
   for (const r of data.recipes) {
     if (!r.photo || images.has(r.photo)) continue;

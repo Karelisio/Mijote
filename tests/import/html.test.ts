@@ -234,6 +234,23 @@ describe('extractHeuristics — generic blog pages', () => {
     expect(r?.steps).toEqual(['Mélanger la farine.', 'Cuire 20 min.', 'Ne pas trop cuire.']);
   });
 
+  it('knows the usual steps headings', () => {
+    for (const heading of ['Mode de préparation', 'La préparation', 'Réalisation', 'Étapes de la recette']) {
+      const r = parse(`<h2>Ingrédients</h2><ul><li>1 citron</li></ul><h2>${heading}</h2><p>Presser.</p>`);
+      expect(r?.steps).toEqual(['Presser.']);
+    }
+  });
+
+  it('keeps the steps going across "Étape n" sub-headings', () => {
+    const r = parse(`
+      <h2>Ingrédients</h2><ul><li>1 citron</li></ul>
+      <h2>Préparation</h2>
+      <h4>Étape 1</h4><p>Presser.</p>
+      <h4>Le conseil du chef</h4><p>Filtrer le jus.</p>
+      <h2>Commentaires</h2><p>Top !</p>`);
+    expect(r?.steps).toEqual(['Presser.', 'Filtrer le jus.']);
+  });
+
   it('does not take "Temps de préparation" for the steps heading', () => {
     const r = parse(`
       <h2>Ingrédients</h2>

@@ -208,6 +208,14 @@ Prep time: 40 min`);
     expect(r.steps).toEqual(['Prep time: 40 min']);
   });
 
+  it('reads a range of servings as the lower bound', () => {
+    const r = parseRecipeText(`Crêpes
+4 à 6 personnes
+250 g de farine`);
+    expect(r.servings).toBe(4);
+    expect(r.sections).toEqual([{ name: '', lines: ['250 g de farine'] }]);
+  });
+
   it('reads the number of servings that opens the ingredients list', () => {
     const r = parseRecipeText(`Crêpes
 Ingrédients

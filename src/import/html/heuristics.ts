@@ -101,9 +101,9 @@ function extractCuisineAz(doc: Document, url: string): ImportedRecipe | null {
 }
 
 const ING_HEADING_RE = /ingr[ée]dients?/i;
-// "Préparation", "Étapes", "Instructions"… but not "Temps de préparation : 20 min".
+// "Préparation", "Mode de préparation", "Étapes", "Réalisation"… (not "Temps de préparation": TIME_RE).
 const STEPS_HEADING_RE =
-  /^(?:les\s+)?(?:pr[ée]parations?|instructions?|[ée]tapes?|m[ée]thode|method|directions?)\b/i;
+  /pr[ée]parations?|instructions?|[ée]tapes?|m[ée]thode|method|directions?|r[ée]alisation/i;
 const TIME_RE = /\b(?:temps|time|dur[ée]e)\b/i;
 const SUBSECTION_RE = /^(?:pour\s+(?:la|le|les|l['’])|for\s+the)\b|:$/i;
 
@@ -142,7 +142,7 @@ function headingLevel(el: Element): number | null {
 }
 
 function isStepsHeading(text: string): boolean {
-  return STEPS_HEADING_RE.test(text) && !TIME_RE.test(text);
+  return STEPS_HEADING_RE.test(text) && !TIME_RE.test(text) && text.length <= 60;
 }
 
 function isIngredientsHeading(text: string): boolean {
@@ -209,12 +209,13 @@ function extractGeneric(doc: Document, url: string): ImportedRecipe | null {
       done.push(el);
       const text = cleanText(el.textContent ?? '');
       if (isIngredientsHeading(text)) {
+        // A nested heading of the same kind ("Étape 1" under "Préparation") keeps the outer level.
+        modeLevel = mode === 'ingredients' ? Math.min(modeLevel, level) : level;
         mode = 'ingredients';
-        modeLevel = level;
         currentSectionName = '';
       } else if (isStepsHeading(text)) {
+        modeLevel = mode === 'steps' ? Math.min(modeLevel, level) : level;
         mode = 'steps';
-        modeLevel = level;
       } else if (mode === 'ingredients' && (level > modeLevel || SUBSECTION_RE.test(text))) {
         if (text && text.length <= 50) currentSectionName = cleanSubName(text);
       } else if (mode !== 'none' && level <= modeLevel) {
