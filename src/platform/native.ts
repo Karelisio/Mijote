@@ -27,6 +27,13 @@ interface MijoteNativePlugin {
    */
   downloadAndInstallApk(options: { url: string; sha256?: string | null }): Promise<void>;
   addListener(event: 'updateProgress', cb: (d: { percent: number }) => void): Promise<PluginListenerHandle>;
+  /** In-app recipe browser (RecipeBrowserActivity). colors: primary, onPrimary, surface, onSurface, onSurfaceVariant. */
+  openRecipeBrowser(options: {
+    url: string;
+    dark: boolean;
+    colors: string[];
+    labels: string[];
+  }): Promise<{ action: 'import' | 'closed'; url?: string; title?: string; html?: string }>;
 }
 
 export const MijoteNative = registerPlugin<MijoteNativePlugin>('MijoteNative');

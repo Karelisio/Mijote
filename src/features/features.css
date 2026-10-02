@@ -875,3 +875,24 @@
   gap: 16px;
   padding: 8px 16px 24px;
 }
+
+/* ================= In-app browser entry ================= */
+.browse-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radius-xl);
+  background: var(--md-surface-container);
+}
+.browse-hero-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  flex: none;
+}

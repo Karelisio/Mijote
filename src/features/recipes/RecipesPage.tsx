@@ -195,6 +195,15 @@ export function RecipesPage() {
       <CollectionsSheet open={collectionsOpen} onClose={() => setCollectionsOpen(false)} />
       <BottomSheet open={addOpen} onClose={() => setAddOpen(false)} title={t('recipes.add')}>
         <ListItem
+          icon="public"
+          headline={t('recipes.newFromSite')}
+          supporting={t('import.browseHint')}
+          onClick={() => {
+            setAddOpen(false);
+            navigate('/import?mode=browse&open=marmiton');
+          }}
+        />
+        <ListItem
           icon="edit"
           headline={t('recipes.newManual')}
           onClick={() => {
