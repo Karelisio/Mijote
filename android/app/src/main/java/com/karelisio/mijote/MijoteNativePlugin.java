@@ -1,15 +1,18 @@
 package com.karelisio.mijote;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import androidx.core.content.ContextCompat;
+import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -25,7 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Small native bridge for Mijote:
  * - text shared to the app ("Share to Mijote" from a browser), cold start and while running;
  * - Material You seed color derived from the wallpaper (Android 12+);
- * - in-app update of the GitHub APK build (download + system installer).
+ * - in-app update of the GitHub APK build (download + system installer);
+ * - the in-app recipe browser (RecipeBrowserActivity) used to import from Marmiton & co.
  */
 @CapacitorPlugin(name = "MijoteNative")
 public class MijoteNativePlugin extends Plugin {
@@ -280,5 +284,50 @@ public class MijoteNativePlugin extends Plugin {
     private boolean canInstall() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
         return getContext().getPackageManager().canRequestPackageInstalls();
+    }
+
+    /**
+     * Opens the in-app recipe browser. Resolves with {action: "import", url, title, html} when the
+     * user imports the page being viewed, or {action: "closed"} when they leave.
+     */
+    @PluginMethod
+    public void openRecipeBrowser(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) {
+            call.reject("An http(s) url is required", "bad_url");
+            return;
+        }
+        Intent intent = new Intent(getContext(), RecipeBrowserActivity.class);
+        intent.putExtra(RecipeBrowserActivity.EXTRA_URL, url);
+        intent.putExtra(RecipeBrowserActivity.EXTRA_DARK, Boolean.TRUE.equals(call.getBoolean("dark", false)));
+        intent.putExtra(RecipeBrowserActivity.EXTRA_COLORS, toStringArray(call.getArray("colors")));
+        intent.putExtra(RecipeBrowserActivity.EXTRA_LABELS, toStringArray(call.getArray("labels")));
+        RecipeBrowserActivity.clearHtml();
+        startActivityForResult(call, intent, "recipeBrowserResult");
+    }
+
+    @ActivityCallback
+    private void recipeBrowserResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject out = new JSObject();
+        Intent data = result.getData();
+        if (result.getResultCode() == Activity.RESULT_OK && data != null) {
+            out.put("action", "import");
+            out.put("url", data.getStringExtra(RecipeBrowserActivity.EXTRA_URL));
+            out.put("title", data.getStringExtra(RecipeBrowserActivity.EXTRA_TITLE));
+            String html = RecipeBrowserActivity.consumeHtml();
+            if (html != null) out.put("html", html);
+        } else {
+            RecipeBrowserActivity.clearHtml();
+            out.put("action", "closed");
+        }
+        call.resolve(out);
+    }
+
+    private static String[] toStringArray(com.getcapacitor.JSArray array) {
+        if (array == null) return new String[0];
+        String[] out = new String[array.length()];
+        for (int i = 0; i < array.length(); i++) out[i] = array.optString(i, "");
+        return out;
     }
 }

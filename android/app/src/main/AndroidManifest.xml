@@ -45,6 +45,14 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- In-app recipe browser (Marmiton & co.) with one-tap import. -->
+        <activity
+            android:name=".RecipeBrowserActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

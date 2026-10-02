@@ -7,20 +7,27 @@ import { TextField } from '@/ui/TextField';
 import { Icon } from '@/ui/Icon';
 import { LinearProgress } from '@/ui/Controls';
 import { useT, type TKey } from '@/i18n';
-import { importFromUrl, normalizeUrl, parseRecipeText } from '@/import';
+import { asHtml, importFromUrl, normalizeUrl, parseRecipeHtml, parseRecipeText } from '@/import';
 import type { ImportedRecipe } from '@/db/types';
 import { readClipboardText } from '@/platform/clipboard';
 import { snackbar } from '@/store/snackbar';
 import { usePendingImport } from './pendingImport';
+import { BrowsePanel } from './BrowsePanel';
+import { openRecipeBrowser } from '@/platform/recipeBrowser';
+import { RECIPE_SITES } from '@/config/recipeSites';
 
-type Mode = 'url' | 'text';
+type Mode = 'browse' | 'url' | 'text';
+const MODES: Mode[] = ['browse', 'url', 'text'];
 
 export default function ImportPage() {
   const t = useT();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { shared, setShared, setDraft } = usePendingImport();
-  const [mode, setMode] = useState<Mode>(params.get('mode') === 'text' ? 'text' : 'url');
+  const [mode, setMode] = useState<Mode>(() => {
+    const m = params.get('mode');
+    return m === 'text' || m === 'url' ? m : 'browse';
+  });
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,6 +95,41 @@ export default function ImportPage() {
     }
   };
 
+  /** Opens a site in the in-app browser; an imported page is parsed from its rendered HTML. */
+  const browse = async (url: string) => {
+    setError(null);
+    const r = await openRecipeBrowser(url, {
+      import: t('import.browserImport'),
+      close: t('common.close'),
+      back: t('common.back'),
+      reload: t('import.browserReload'),
+    }).catch(() => null);
+    if (!r || r.action === 'closed') return;
+    if (r.action === 'external') {
+      setMode('url');
+      snackbar(t('import.browserExternal'));
+      return;
+    }
+    const recipe = r.html ? parseRecipeHtml(asHtml(r.html), r.url) : null;
+    if (recipe) done(recipe);
+    else {
+      // The rendered page had nothing usable: try the server version of the same URL.
+      setMode('url');
+      setUrl(r.url);
+      void analyzeUrl(r.url);
+    }
+  };
+
+  // "Search on Marmiton" from the recipes screen opens the site straight away.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    const site = RECIPE_SITES.find((s) => s.id === params.get('open'));
+    if (!site || autoOpened.current) return;
+    autoOpened.current = true;
+    void browse(site.home);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const analyzeText = (raw: string) => {
     if (!raw.trim()) {
       setError('import.errorEmpty');
@@ -128,7 +170,7 @@ export default function ImportPage() {
   return (
     <Screen title={t('import.title')} back>
       <div className="tabs" role="tablist">
-        {(['url', 'text'] as const).map((m) => (
+        {MODES.map((m) => (
           <button
             key={m}
             type="button"
@@ -140,8 +182,8 @@ export default function ImportPage() {
               setError(null);
             }}
           >
-            <Icon name={m === 'url' ? 'link' : 'content_paste'} size={20} />
-            {m === 'url' ? t('import.fromUrl') : t('import.fromText')}
+            <Icon name={m === 'browse' ? 'public' : m === 'url' ? 'link' : 'content_paste'} size={20} />
+            {m === 'browse' ? t('import.browse') : m === 'url' ? t('import.fromUrl') : t('import.fromText')}
             {mode === m && <motion.span layoutId="import-tab" className="tab-indicator" />}
           </button>
         ))}
@@ -152,12 +194,14 @@ export default function ImportPage() {
         <motion.div
           key={mode}
           className="import-body"
-          initial={{ opacity: 0, x: mode === 'url' ? -16 : 16 }}
+          initial={{ opacity: 0, x: mode === 'text' ? 16 : -16 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
         >
-          {mode === 'url' ? (
+          {mode === 'browse' ? (
+            <BrowsePanel onOpen={(u) => void browse(u)} />
+          ) : mode === 'url' ? (
             <form
               className="col"
               style={{ gap: 16 }}
